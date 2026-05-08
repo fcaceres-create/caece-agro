@@ -118,7 +118,8 @@ _CONVERSION: dict[str, tuple[str, float]] = {
 
 _TIMEOUT_S: int = 10
 _REINTENTOS_MAX: int = 3
-_BACKOFF_BASE_S: int = 1  # 1s, 2s, 4s
+_BACKOFF_BASE_S: int = 1  # 1s, 2s, 4s — para 5xx y errores de red
+_BACKOFF_RATE_LIMIT_S: int = 60  # 60s, 120s, 240s — específico para 429
 _DIR_CACHE: Path = Path("data/cache/suelo")
 
 # Decimales a los que se redondean lat/lon para construir la clave de
@@ -164,26 +165,43 @@ def _get_con_reintentos(
     url: str, params: dict, contexto: str
 ) -> requests.Response:
     """
-    GET con timeout 10 s y hasta 3 intentos con backoff exponencial.
-    Errores 4xx no se reintentan (semánticos); 5xx y errores de red sí.
+    GET con timeout 10 s y hasta 3 intentos con backoff por categoría:
+
+    - **5xx y errores de red**: backoff base 1s × 2^intento (1, 2, 4 s).
+    - **429 Too Many Requests** (rate limiting): backoff 60s × 2^intento
+      (60, 120, 240 s). Honra el header ``Retry-After`` si está presente.
+    - **Otros 4xx** (400, 401, 403, 404…): NO se reintentan, se propaga
+      el error semántico.
     """
     ultimo_error: Optional[BaseException] = None
+    espera = 0
     for intento in range(_REINTENTOS_MAX):
         try:
             resp = requests.get(url, params=params, timeout=_TIMEOUT_S)
         except (requests.Timeout, requests.ConnectionError) as e:
             ultimo_error = e
+            espera = _BACKOFF_BASE_S * (2 ** intento)
         else:
             if resp.status_code < 400:
                 return resp
-            if 400 <= resp.status_code < 500:
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After", "")
+                if retry_after.isdigit():
+                    espera = int(retry_after)
+                else:
+                    espera = _BACKOFF_RATE_LIMIT_S * (2 ** intento)
+                ultimo_error = requests.HTTPError(
+                    f"HTTP 429 (rate limit) en {contexto}", response=resp,
+                )
+            elif 400 <= resp.status_code < 500:
                 resp.raise_for_status()
-            ultimo_error = requests.HTTPError(
-                f"HTTP {resp.status_code} en {contexto}", response=resp,
-            )
+            else:
+                ultimo_error = requests.HTTPError(
+                    f"HTTP {resp.status_code} en {contexto}", response=resp,
+                )
+                espera = _BACKOFF_BASE_S * (2 ** intento)
 
         if intento < _REINTENTOS_MAX - 1:
-            espera = _BACKOFF_BASE_S * (2 ** intento)
             logger.warning(
                 "[SoilGrids] Fallo en %s (intento %d/%d): %s. "
                 "Reintento en %ds.",

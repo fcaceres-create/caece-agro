@@ -75,8 +75,17 @@ _VARS_DAILY: tuple[str, ...] = (
 
 _TIMEOUT_S: int = 10
 _REINTENTOS_MAX: int = 3
-_BACKOFF_BASE_S: int = 1  # 1s, 2s, 4s
+_BACKOFF_BASE_S: int = 1   # 1s, 2s, 4s — para 5xx y errores de red
+_BACKOFF_RATE_LIMIT_S: int = 300  # 300s, 600s, 1200s — específico para 429
 _DIR_CACHE: Path = Path("data/cache/clima")
+
+# Throttling preventivo: garantiza una pausa mínima entre requests
+# reales al endpoint /v1/archive (no afecta cache hits). Open-Meteo
+# permite ~600 calls/min en plan free; 750 ms ≈ 80/min, imposible
+# llegar al límite por minuto. Conservador a propósito tras un
+# incidente previo de saturación de la cuota horaria (5 000/h).
+_THROTTLE_MIN_S: float = 0.750
+_ultimo_request_ts: float = 0.0
 
 # Si faltan más del 5% de los días esperados en un resumen de campaña,
 # se loguea un WARN para visibilidad.
@@ -98,26 +107,56 @@ def _get_con_reintentos(
     url: str, params: dict, contexto: str
 ) -> requests.Response:
     """
-    GET con timeout 10 s y hasta 3 intentos con backoff exponencial.
-    Errores 4xx no se reintentan (semánticos); 5xx y errores de red sí.
+    GET con timeout 10 s y hasta 3 intentos con backoff por categoría:
+
+    - **5xx y errores de red**: backoff base 1s × 2^intento (1, 2, 4 s).
+    - **429 Too Many Requests** (rate limiting): backoff 60s × 2^intento
+      (60, 120, 240 s). Honra el header ``Retry-After`` si está presente.
+    - **Otros 4xx** (400, 401, 403, 404…): NO se reintentan, se propaga
+      el error semántico.
+
+    Aplica además un throttling preventivo de 150 ms entre requests
+    reales al endpoint, para no disparar el rate limit por nuestra cuenta.
     """
+    global _ultimo_request_ts
     ultimo_error: Optional[BaseException] = None
+    espera = 0
     for intento in range(_REINTENTOS_MAX):
+        # Throttling preventivo: 150 ms mínimo desde el último request real.
+        delta = time.monotonic() - _ultimo_request_ts
+        if delta < _THROTTLE_MIN_S:
+            time.sleep(_THROTTLE_MIN_S - delta)
+        _ultimo_request_ts = time.monotonic()
+
         try:
             resp = requests.get(url, params=params, timeout=_TIMEOUT_S)
         except (requests.Timeout, requests.ConnectionError) as e:
             ultimo_error = e
+            espera = _BACKOFF_BASE_S * (2 ** intento)
         else:
             if resp.status_code < 400:
                 return resp
-            if 400 <= resp.status_code < 500:
+            if resp.status_code == 429:
+                # Rate limit: backoff largo. Honramos Retry-After si viene.
+                retry_after = resp.headers.get("Retry-After", "")
+                if retry_after.isdigit():
+                    espera = int(retry_after)
+                else:
+                    espera = _BACKOFF_RATE_LIMIT_S * (2 ** intento)
+                ultimo_error = requests.HTTPError(
+                    f"HTTP 429 (rate limit) en {contexto}", response=resp,
+                )
+            elif 400 <= resp.status_code < 500:
+                # 4xx no-rate-limit: error semántico, no reintentamos.
                 resp.raise_for_status()
-            ultimo_error = requests.HTTPError(
-                f"HTTP {resp.status_code} en {contexto}", response=resp,
-            )
+            else:
+                # 5xx: reintentar con backoff base.
+                ultimo_error = requests.HTTPError(
+                    f"HTTP {resp.status_code} en {contexto}", response=resp,
+                )
+                espera = _BACKOFF_BASE_S * (2 ** intento)
 
         if intento < _REINTENTOS_MAX - 1:
-            espera = _BACKOFF_BASE_S * (2 ** intento)
             logger.warning(
                 "[Open-Meteo] Fallo en %s (intento %d/%d): %s. "
                 "Reintento en %ds.",
