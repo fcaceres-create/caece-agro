@@ -59,7 +59,7 @@ agrosmart/
 │   │   ├── open_meteo.py
 │   │   └── soilgrids.py
 │   ├── procesamiento/          # consolidación y generación de hechos
-│   │   ├── partidos.py
+│   │   ├── departamentos.py
 │   │   ├── consolidacion.py
 │   │   └── generador_hechos_prolog.py
 │   ├── modelos/                # modelos estadísticos
