@@ -348,9 +348,11 @@ Esto refuerza la validez del dataset: dos eventos climáticos extremos distintos
 
 ---
 
+---
+
 ## 6. Estructura del dataset maestro resultante
 
-El dataset final tiene 29 columnas:
+El dataset final tiene **29 columnas y 3.786 filas**.
 
 **Identificadoras (5):** cultivo, region, provincia, departamento, campania.
 **Geográficas (2):** latitud, longitud.
@@ -359,18 +361,56 @@ El dataset final tiene 29 columnas:
 **SoilGrids — suelo (6):** arcilla_pct, arena_pct, limo_pct, materia_organica_pct, ph, cec.
 **Calidad de datos (3):** suelo_anillo_fallback, suelo_capas_disponibles, suelo_calidad.
 
-**Estado actual al cierre parcial de Fase II:**
-- 2.338 filas pampeanas validadas y cargadas.
-- Pendiente: corrida diferencial para los 19 departamentos extra-pampeanos (NOA, NEA, Cuyo, Patagonia + 2 pampeanos rezagados que quedaron sin datos por el rate limit).
+### Cobertura final por región
 
-**Cobertura final estimada tras la unificación:** ~3.000-3.500 filas distribuidas aproximadamente como:
-- Pampeana: ~2.300 filas (~70%)
-- NOA: ~400 filas
-- NEA: ~350 filas
-- Cuyo: ~50 filas
-- Patagonia: ~10-20 filas
+| Región | Filas | % | Comentario |
+|---|---|---|---|
+| Pampeana | 2.672 | 70.6% | Núcleo del dataset |
+| NOA | 604 | 16.0% | Salta, Tucumán, Jujuy, Santiago del Estero |
+| NEA | 510 | 13.5% | Corrientes, Chaco, Santa Fe norte, Entre Ríos norte |
+| Cuyo | 0 | 0% | Ver nota abajo |
+| Patagonia | 0 | 0% | Ver nota abajo |
 
-Esta sección se actualizará con los números finales tras la corrida diferencial.
+**Nota sobre Cuyo y Patagonia:** la corrida diferencial ejecutó las consultas para Lavalle, General Alvear y General Roca, pero MAGyP devolvió 0 filas para todos los cultivos viables. La interpretación es metodológica:
+
+- En Cuyo, los cereales (maíz, trigo, cebada) que se declararon viables se cultivan exclusivamente bajo riego, y el sistema de estimaciones agrícolas del MAGyP no los reporta como cultivos extensivos en secano.
+- En Patagonia, la avena para verdeo no es estadísticamente reportada por el ministerio.
+
+Esto confirma de manera honesta que **el sistema AgroSmart opera efectivamente sobre Pampeana, NOA y NEA**, alineado con el grueso de la producción agrícola extensiva argentina. Las regiones Cuyo y Patagonia quedan documentadas como limitación de la fuente de datos elegida, no del sistema desarrollado.
+
+### Cobertura por cultivo
+
+| Cultivo | Filas | Cultivo | Filas |
+|---|---|---|---|
+| maíz | 691 | algodón | 115 |
+| soja | 659 | maní | 112 |
+| sorgo | 539 | centeno | 148 |
+| trigo | 535 | cebada | 129 |
+| girasol | 399 | arroz | 71 |
+| avena | 388 | | |
+
+Los 11 cultivos canónicos del proyecto tienen cobertura suficiente para entrenar modelos de regresión por cultivo.
+
+### Calidad del dato de suelo
+
+| Calidad | Filas | % | Significado |
+|---|---|---|---|
+| directo | 470 | 12.4% | Píxel exacto con datos en SoilGrids |
+| fallback_1km | 2.210 | 58.4% | Rescatado por anillo 1 (radio 1.1 km) |
+| fallback_3km | 972 | 25.7% | Rescatado por anillo 2 (radio 3.3 km) |
+| sin_dato | 134 | 3.5% | Ningún anillo rescató (Mar del Plata) |
+
+A nivel departamento: 6 con dato directo, 17 que rescataron en anillo 1, 6 en anillo 2, 1 sin dato (General Pueyrredón).
+
+### Top y bottom 5 departamentos por cobertura
+
+**Top 5 (mayor cobertura):** Río Cuarto (209), Unión (196), Marcos Juárez (186), Capital LP (185), Realicó (184). Todos pampeanos con muchos cultivos viables y campañas reportadas.
+
+**Bottom 5 (menor cobertura):** San Pedro (70), Goya (69), Mercedes (59), Concepción (51), 1° de Mayo (32). Todos del NEA, donde son viables menos cultivos y MAGyP tiene cobertura más rala para algunos años.
+
+### Observación adicional: filas con rendimiento 0
+
+El dataset contiene una pequeña cantidad de filas con `rendimiento_kg_ha = 0`, que corresponden a campañas reportadas como cosecha total cero por MAGyP (típicamente campañas catastróficas donde el cultivo no se cosechó). En la fase de modelado se decidió excluirlas del cálculo de percentiles para alimentar Prolog (porque "rendimiento 0" no es un valor continuo comparable), pero se mantienen en el dataset crudo para análisis estadísticos posteriores sobre frecuencia de fracaso.
 
 ---
 
