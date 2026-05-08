@@ -1,0 +1,49 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Bytecode y caches de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datos regenerables (descargados desde APIs)
+data/cache/
+data/raw/
+
+# Modelos serializados (regenerables)
+*.pkl
+*.joblib
+
+# Variables de entorno y secretos
+.env
+.env.local
+
+# Configuración de IDE
+# Se permite versionar settings.json compartibles si en algún momento
+# definimos configuración común para el equipo.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Sistema operativo
+Thumbs.db
+desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# Tests y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build / distribución
+build/
+dist/
+*.egg-info/
