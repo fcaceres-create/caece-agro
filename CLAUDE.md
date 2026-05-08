@@ -48,7 +48,7 @@ simbólico:
 
 ## Fuentes de datos (todas vía API, sin datasets estáticos)
 
-- **MAGyP** — rendimientos históricos por cultivo, provincia y partido.
+- **MAGyP** — rendimientos históricos por cultivo, provincia y departamento.
   https://datos.magyp.gob.ar/series/api
   https://datosestimaciones.magyp.gob.ar
 - **Open-Meteo** — clima histórico por coordenadas, sin API key.
@@ -84,7 +84,7 @@ agrosmart/
 │   │   └── README.md
 │   ├── procesamiento/
 │   │   ├── __init__.py
-│   │   ├── partidos.py         # constantes geográficas
+│   │   ├── departamento.py         # constantes geográficas
 │   │   ├── consolidacion.py    # construye dataset maestro
 │   │   └── generador_hechos_prolog.py
 │   ├── modelos/
