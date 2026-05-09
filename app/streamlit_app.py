@@ -36,6 +36,7 @@ import streamlit as st  # noqa: E402
 
 from app.componentes.consola_prolog import render_consola_prolog  # noqa: E402
 from app.componentes.detalle_cultivo import render_detalle_cultivo  # noqa: E402
+from app.componentes.documentacion import render_documentacion  # noqa: E402
 from app.componentes.mapa import render_mapa  # noqa: E402
 from app.componentes.reporte import render_reporte  # noqa: E402
 from app.componentes.sidebar import construir_lote_desde_estado, render_sidebar  # noqa: E402
@@ -192,13 +193,17 @@ def main() -> None:
     reporte = st.session_state.get("ultimo_reporte")
     lote = st.session_state.get("ultimo_lote")
 
-    # Layout principal en dos tabs: el reporte de evaluación (sólo
-    # poblado tras apretar "Evaluar lote") y la consola Prolog
-    # (siempre disponible: muestra el sistema simbólico independiente
-    # de la cascada).
+    # Layout principal en tres tabs: el reporte de evaluación (sólo
+    # poblado tras apretar "Evaluar lote"), la consola Prolog y la
+    # documentación del proyecto. Los tres son accesibles siempre,
+    # independientes de la cascada.
     st.divider()
-    tab_reporte, tab_consola = st.tabs(
-        ["📋 Reporte de evaluación", "🔍 Consola Prolog"]
+    tab_reporte, tab_consola, tab_doc = st.tabs(
+        [
+            "📋 Reporte de evaluación",
+            "🔍 Consola Prolog",
+            "📚 Documentación",
+        ]
     )
 
     with tab_reporte:
@@ -214,6 +219,9 @@ def main() -> None:
 
     with tab_consola:
         render_consola_prolog(sistema)
+
+    with tab_doc:
+        render_documentacion()
 
     render_footer()
 
