@@ -27,3 +27,9 @@ pyswip>=0.2.10,<1.0
 
 # Tests
 pytest>=7.4,<9.0
+
+# App web (Fase IV — interfaz de defensa oral)
+streamlit>=1.32,<2.0
+folium>=0.17,<1.0
+streamlit-folium>=0.20,<1.0
+plotly>=5.20,<7.0
