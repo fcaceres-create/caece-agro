@@ -818,3 +818,128 @@ Tres puntos honestos para incluir en la defensa oral, no para ocultar:
 - **Maní**: el R² muy bajo (0.024) no se mejora con más datos del mismo tipo. Los drivers reales del rinde de maní son la variedad genética, la fecha de siembra y la disponibilidad de calcio, ninguno de los cuales está en el dataset. Es una limitación de la fuente, no del enfoque. Trabajo futuro: enriquecer la base con el Registro de Variedades del INASE y datos finos de fenología por departamento.
 - **Sequía 2022/23**: el sistema descarta absolutamente todos los cultivos. Es **agronómicamente correcto** —un asesor que recomendara sembrar soja con 320 mm sería irresponsable—, pero limita la utilidad práctica del sistema durante años catastróficos. Un productor que igual va a sembrar (porque tiene que sembrar) merece una recomendación útil del tipo "si tenés que elegir, esto pierde menos". Trabajo futuro: agregar un modelo de "pérdida proyectada" para los cultivos descartados, que rankee por magnitud de pérdida esperada en lugar de descartarlos en bloque.
 - **Lote NEA original (sin ajustar)**: el primer intento del LOTE 3 con precip 1100 mm y pH 6.0 también descartaba todo. Esto **sí es informativo**: aun en una zona productora reconocida (NEA arrocero), valores fuera de los rangos óptimos derivados estadísticamente del dataset descartan al cultivo. Para la demo se ajustaron los valores a 850 mm y 6.1 (caso positivo), pero la conclusión queda anotada: el sistema es estricto y se inclina hacia el lado conservador, lo cual es una propiedad deseable en un sistema de recomendación agronómica responsable.
+
+---
+
+## 14. App web Streamlit (Fase V)
+
+Esta sección documenta la última pieza del proyecto: una **app web** que envuelve la cascada Python↔Prolog y la expone con una interfaz limpia para usar en la defensa oral. La app no estaba en el alcance mínimo del TFI; es valor agregado pensado para que el evaluador pueda interactuar con el sistema en vivo, sin tener que leer código ni interpretar JSON crudo.
+
+### 14.1. Decisión de construir una interfaz web
+
+La cascada y la demo CLI ya cubrían la consigna del TFI. Sin embargo, una defensa oral que se apoya solo en JSON impreso en consola es menos persuasiva que una en la que el evaluador puede mover un slider, ver el reporte actualizarse y entender la lógica visualmente. La pregunta era con qué stack construirla.
+
+Se evaluaron tres caminos:
+
+- **Flask + HTML/CSS templates**: requiere mantener templates Jinja2, manejar estado en cliente vía JS y volver a programar todo el pipeline de input → llamada → renderizado. Mucho boilerplate para un TFI individual.
+- **React + API REST (FastAPI/Flask backend)**: la solución "industrial". Implica dos stacks (Python + JS), build pipeline, manejo explícito de estado del cliente. Apropiado para un producto, sobredimensionado para una defensa oral.
+- **Streamlit**: Python puro, los componentes son funciones que se renderizan a HTML automáticamente, los widgets manejan su propio estado en `st.session_state`. Sin custom CSS necesario, sin frontend separado.
+
+**Decisión: Streamlit.** Los argumentos a favor fueron tres: (1) cero contexto nuevo para el desarrollador (todo es Python), (2) la curva de aprendizaje termina en horas y no en días, (3) el resultado visual se ve profesional sin escribir una línea de CSS. La contracara es que Streamlit no es reactivo en el sentido de React: cada interacción dispara un rerun completo del script. Para un sistema con carga pesada (pyswip + 11 modelos joblib) eso requiere usar caching agresivo, pero es un patrón estándar del framework y no introduce complejidad arquitectónica.
+
+### 14.2. Stack y dependencias
+
+Las dependencias web se sumaron al [requirements.txt](../requirements.txt) en un bloque separado, manteniendo intacto el resto:
+
+```
+streamlit>=1.32,<2.0
+folium>=0.17,<1.0
+streamlit-folium>=0.20,<1.0
+plotly>=5.20,<7.0
+```
+
+Versiones efectivamente instaladas en el venv: streamlit 1.57.0, folium 0.20.0, streamlit-folium 0.27.2, plotly 6.7.0.
+
+Dos decisiones de stack que vale la pena justificar:
+
+- **Folium con `st_folium`** es la combinación canónica para mapas interactivos en Streamlit. La alternativa (pydeck, también ya disponible como dependencia transitiva) ofrece mejor rendimiento gráfico pero los callbacks de click son más finicky en Windows. Folium con `st_folium` resuelve el click por rerun: cada vez que el usuario clickea un marker, el componente devuelve `last_object_clicked` y el script se re-ejecuta con esa información. Es simple, robusto y suficiente para los 30 marcadores del mapa.
+- **Plotly y no matplotlib** para los gráficos del detalle por cultivo. Matplotlib genera imágenes estáticas que rompen el flujo interactivo de la web app; plotly entrega gráficos con hover, zoom y leyenda dinámica que se ven naturales en un browser. Como matplotlib ya estaba en `requirements.txt` queda disponible si en algún momento conviene caer a él (por ejemplo para generar PNGs de informe).
+
+### 14.3. Arquitectura modular
+
+La app vive en el directorio `app/` con la siguiente estructura:
+
+```
+app/
+├── __init__.py
+├── streamlit_app.py            # punto de entrada
+└── componentes/
+    ├── __init__.py
+    ├── sidebar.py              # input del lote
+    ├── mapa.py                 # selección geográfica
+    ├── reporte.py              # output principal
+    └── detalle_cultivo.py      # drill-down por cultivo
+```
+
+Cada componente tiene una responsabilidad acotada y expone una función pública (`render_sidebar`, `render_mapa`, `render_reporte`, `render_detalle_cultivo`) que se llama desde `streamlit_app.py`. La modularización ayuda a la legibilidad del código y al tracking de cambios, pero **no aporta nada a la performance**: Streamlit ejecuta el script entero (todos los `render_*` incluidos) en cada interacción del usuario. Lo que resuelve la performance es el caching del sistema (próxima sub-sección), no la división en archivos.
+
+### 14.4. Cache y performance
+
+`SistemaAgroSmart()` instancia pyswip, consulta `agrosmart.pl` y carga 11 modelos joblib en memoria. La operación toma entre 2 y 4 segundos en el primer pageload. Si se ejecutara en cada rerun, mover un slider sería una experiencia inusable.
+
+La solución es `@st.cache_resource`:
+
+```python
+@st.cache_resource(show_spinner=False)
+def _inicializar_sistema() -> SistemaAgroSmart:
+    return SistemaAgroSmart()
+```
+
+`cache_resource` está pensado específicamente para objetos no serializables (conexiones, modelos, sesiones de Prolog). Streamlit guarda la referencia en memoria del proceso del servidor y la devuelve en cada rerun sin reinicializar. El primer pageload muestra el spinner "Inicializando sistema experto..." (definido a mano en `streamlit_app.py`); a partir del segundo, las interacciones son instantáneas.
+
+El dataset (`data/processed/dataset_maestro.csv`) y el resumen por departamento usan `@st.cache_data` por la misma razón pero con semántica de inmutabilidad: se cachean por valor de los argumentos, no por referencia.
+
+### 14.5. Sidebar — entrada del lote
+
+El sidebar combina dos formas de entrada:
+
+- **Selector de ejemplos pre-configurados** ("Cargar ejemplo"): un selectbox con cuatro lotes ya armados que reproducen los validados en la sección 13: Pergamino típico, Sequía 2022/23, NEA arrocero y Lote ácido. Más una opción "Personalizado" que mantiene los valores actuales. En la defensa, esto evita tener que mover siete sliders en vivo: se elige el ejemplo y la cascada arranca con esos valores.
+- **Sliders manuales** para las siete variables (pH, MO, arcilla, arena, precipitación, temperatura, días de helada) más el selector de región. Los rangos de los sliders son **deliberadamente amplios** (precipitación 100–1800 mm, pH 4–9, etc.) para permitir explorar escenarios extremos en vivo y ver cómo reacciona el sistema.
+
+La pieza no obvia es el manejo de estado. Streamlit reejecuta el script entero en cada interacción, así que los widgets necesitan una fuente de verdad estable. Se aplicó el patrón **"solo `key=`, nunca `value=` o `index=`"**: cada slider tiene una key (`input_ph`, `input_precip`, etc.) y `st.session_state` es la única fuente de verdad para los valores. Inicializar un slider con `value=` produce conflictos cuando el selector de ejemplo o el click del mapa intentan escribir en `session_state` desde fuera del widget; usar solo `key=` deja a Streamlit que lea el valor de `session_state` automáticamente. La lógica de "si cambió el ejemplo, reescribir los valores" se ejecuta antes de renderizar los sliders y los widgets levantan los nuevos valores en el mismo rerun.
+
+### 14.6. Mapa interactivo — selección geográfica
+
+El mapa renderiza los **30 departamentos del dataset** como `CircleMarker` color-codeados por región: azul para pampeana, verde para NEA, naranja para NOA. Cada marker tiene tooltip con el nombre del departamento y popup con el resumen de medianas (pH, MO, lluvia, temperatura, cantidad de registros). El centro del mapa está en (-35, -65) con zoom 4 para que Argentina entre completa en la vista inicial.
+
+La interacción clave es el **click sobre un marker**: el componente detecta el último click en el rerun siguiente y autocompleta el sidebar con la mediana histórica del departamento. La elección de "mediana sobre todas las campañas y cultivos" es deliberada: el suelo es invariable en el dataset y el clima es promedio histórico; esa agregación es **agnóstica al cultivo**, lo cual es correcto porque el sidebar es un descriptor del lote y el cultivo lo decide la cascada de Prolog después. Si se promediara por cultivo, los valores del sidebar dependerían arbitrariamente de qué cultivo está más representado en ese departamento.
+
+Para evitar reaplicar el autocompletado en cada rerun, se compara la coordenada clickeada contra la última procesada (`ultimo_click_latlon` en `session_state`); solo si cambia, se actualiza. Adicionalmente, el componente expone un **selectbox de fallback** ("Seleccionar departamento por nombre") con los 30 departamentos listados. Cubre dos escenarios: que el evaluador prefiera no usar el mapa, o que el render de tiles falle por algún navegador o entorno restrictivo.
+
+### 14.7. Reporte — output principal
+
+El reporte aparece debajo del mapa y la información estática, cuando el usuario clickea "Evaluar lote". Tiene tres bloques:
+
+- **Resumen del lote evaluado:** un encabezado con `st.metric` distribuido en cuatro columnas que muestra región, pH, MO, arcilla, arena, precipitación, temperatura media y días de helada. Permite a quien mira el reporte verificar de un golpe sobre qué entrada se computó la salida.
+- **Tres tabs con la salida de `reporte_lote/4`:** Recomendados / No recomendados / Aptos parciales, con su contador entre paréntesis. Reflejan exactamente la estructura de la API simbólica de Prolog (sección 12.6).
+- **Para cada cultivo recomendado**, una tarjeta con borde que contiene: nombre con emoji, banner de clasificación cualitativa (`st.success` para alto, `st.info` para medio, `st.warning` para bajo, `st.error` para muy bajo), tres `st.metric` con predicción puntual + intervalo de confianza al 95% + mediana histórica de la zona, y una alerta amarilla con los riesgos no críticos observados (si los hay).
+- **Para cada cultivo no recomendado**, un ítem compacto con el motivo en lenguaje humano (mapeo desde `riesgo_sequia`, `suelo_fuera_de_rango`, etc., a frases legibles).
+- **Para cada cultivo apto parcial**, un ítem que indica si lo que falla es el suelo o el clima y agrega una nota sobre las mitigaciones posibles (riego, encalado, variedad adaptada).
+
+Todo el estilo se apoya en utilidades nativas de Streamlit y emojis, sin custom CSS. Los emojis hacen señalética visual (🌱 soja, 🌽 maíz, 🌾 cereales, etc.) sin comprometer accesibilidad.
+
+### 14.8. Detalle por cultivo — explainability
+
+Esta es la pieza clave del valor visual de la app. Debajo del reporte, un expander **"🔬 Detalle por cultivo"** abre un panel con un selectbox que lista todos los cultivos evaluados (recomendados + no recomendados + aptos parciales). Para el cultivo seleccionado se muestra:
+
+- **Tabla "valor del lote vs rango óptimo"**, con cinco columnas: variable, valor del lote, P10, P90, estado. El estado es un check (`✓ en rango`) o una cruz con la dirección del desajuste (`✗ bajo P10` o `✗ sobre P90`). Los rangos vienen directamente de Prolog (`rango_optimo/4`), así que la tabla muestra exactamente lo que la regla simbólica está evaluando.
+- **Para cultivos recomendados**, un boxplot horizontal con la distribución histórica del rendimiento del cultivo en la región del lote, una línea vertical roja marcando la predicción del modelo y una banda de fondo más clara mostrando el intervalo de confianza al 95%. Esto le permite al evaluador ver de un vistazo si el modelo está prediciendo dentro de la nube de campañas históricas o en un extremo. Si no hay datos del cultivo en la región (por ejemplo arroz en pampeana), se muestra un mensaje explicativo en lugar de un gráfico vacío.
+
+Esta sección **materializa visualmente el razonamiento del sistema experto**: el evaluador puede ver, variable por variable, exactamente por qué un cultivo es apto o no y dónde queda la predicción cuantitativa respecto del histórico de la zona. Es la traducción de "el sistema dice X" a "el sistema dice X **porque** estas tres variables están en rango y estas dos no".
+
+### 14.9. Validación de la app
+
+La validación se hizo en tres niveles:
+
+- **Syntax check** de los seis archivos Python de `app/` con `ast.parse`.
+- **Arranque limpio del servidor**: `streamlit run app/streamlit_app.py` en modo headless levantó el server Uvicorn en el puerto configurado y respondió 200 al endpoint `/_stcore/health`. Sin warnings ni tracebacks en logs durante el arranque ni después de las primeras requests.
+- **Validación de la cadena completa fuera del runtime Streamlit**: se importaron los cuatro componentes desde una sesión Python aislada, se cargó el dataset (30 departamentos confirmados), se instanció `SistemaAgroSmart()` y se evaluó el lote Pergamino. El resultado fue 4 cultivos recomendados (`soja`, `maiz`, `girasol`, `sorgo`), 5 no recomendados y 2 aptos parciales — coincide exactamente con la salida del `scripts/demo_agrosmart.py` validado en la sección 13. Esto confirma que la app no introduce divergencia respecto del CLI: es un envoltorio puro, no un sistema paralelo.
+
+Las pruebas visuales en el browser con los cuatro ejemplos pre-configurados confirmaron el comportamiento esperado: Pergamino típico recomienda los cuatro grandes; Sequía 2022/23 deja la lista de recomendados vacía con todos los cultivos en no recomendados por `riesgo_sequia`; NEA arrocero recomienda arroz y maíz; Lote ácido descarta todo. Los reportes JSON exportados desde la app son idénticos a los del demo CLI.
+
+### 14.10. Aprendizajes y limitaciones
+
+- **Streamlit no es reactivo como React.** Cada interacción (mover un slider, cambiar el selectbox, clickear un marker) dispara un rerun completo del script. Para un sistema liviano esto es transparente; para uno pesado como AgroSmart, `@st.cache_resource` no es opcional sino estructural. Documentado para que un mantenedor futuro entienda por qué cualquier cambio que toque la inicialización del sistema tiene que respetar la firma cacheable.
+- **El click de folium se materializa en el rerun siguiente**, no en el click mismo. Esto produce un pequeño retraso visual (~150–300 ms) entre clickear y ver el sidebar autocompletado. Es el patrón canónico de `streamlit_folium` y es aceptable para la defensa, pero si en algún momento hace falta interactividad inmediata habría que migrar el mapa a pydeck o a un componente custom JS.
+- **El detalle por cultivo es donde la app gana valor real.** Los tres bloques previos (sidebar, mapa, reporte) ya estaban más o menos cubiertos por el CLI; lo que solo se puede comunicar visualmente es la tabla de check/cross y el boxplot con la predicción marcada. Esa es la sección que vale la pena ejercitar más en la defensa.
+- **Mejoras futuras** que quedaron fuera del alcance: persistir lotes evaluados en una base SQLite para historizar consultas (útil si la app se usa repetidamente), exportar el reporte a PDF para compartir con un asesor, y agregar un comparador lado a lado de dos lotes para ver el efecto de cambiar una sola variable. Ninguna es necesaria para la defensa, todas son extensiones naturales del diseño actual.
