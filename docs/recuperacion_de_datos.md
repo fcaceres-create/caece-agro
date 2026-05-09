@@ -450,7 +450,213 @@ El sistema resultante es defendible no solo por lo que produce sino por **cómo 
 Este documento se ampliará en las próximas fases del proyecto con las decisiones y problemas específicos de cada una:
 
 - **Sección 10 — Decisiones metodológicas en la Fase II (EDA y modelado)** — pendiente.
-- **Sección 11 — Construcción de la base de hechos Prolog desde el EDA** — pendiente.
-- **Sección 12 — Diseño de las reglas del sistema experto** — pendiente.
+- **Sección 11 — Construcción de la base de hechos Prolog desde el EDA** — completada (ver más abajo).
+- **Sección 12 — Diseño de las reglas del sistema experto** — completada (ver más abajo).
 - **Sección 13 — Bridge Python ↔ Prolog: integración híbrida** — pendiente.
 - **Sección 14 — Validación final y caso de uso de demostración** — pendiente.
+
+---
+
+## 11. Construcción de la base de hechos Prolog desde el EDA
+
+Esta sección documenta la materialización del primer puente del aporte propio (Fase IV): **datos → conocimiento**. El EDA (Fase II) calcula percentiles por cultivo sobre el dataset argentino, y un script Python los exporta como hechos Prolog que el sistema experto consume directamente. Las reglas no tienen umbrales hardcodeados: todo lo que la capa simbólica usa proviene de evidencia estadística sobre datos reales.
+
+### 11.1. Generador automático: `src/procesamiento/generar_hechos_prolog.py`
+
+**Entradas:**
+
+- `data/processed/rangos_optimos_por_cultivo.csv` — producido por el notebook `02_eda_consolidado.ipynb`. Contiene 110 filas (11 cultivos × 10 variables agronómicas) con columnas `cultivo, variable, p10, mediana, p90, n_filas`. Los percentiles se calcularon sobre las **campañas con rinde por encima de la mediana** del cultivo, que es el subconjunto que define qué condiciones acompañan a un buen resultado productivo.
+- `data/processed/dataset_maestro.csv` — el dataset consolidado (3.786 filas, 29 columnas). Se usa para derivar dos bloques que no están en el CSV de rangos: presencia geográfica de cada cultivo y rendimiento esperado.
+
+**Salida:** `src/prolog/hechos_generados.pl`, un archivo Prolog autogenerado (no editar a mano) con cabecera de timestamp ISO y la instrucción para regenerarlo.
+
+**Invocación:** `python -m src.procesamiento.generar_hechos_prolog`.
+
+### 11.2. Estructura del archivo generado: 6 bloques, 265 hechos
+
+| Predicado | Aridad | Hechos | Origen |
+|---|---|---|---|
+| `cultivo_soportado/1` | 1 | 11 | lista canónica de cultivos del proyecto |
+| `region_operacional/1` | 1 | 3 | regiones con cobertura efectiva (pampeana, noa, nea) |
+| `cultivo_en_region/2` | 2 | 20 | groupby (cultivo, region) sobre el dataset |
+| `rango_optimo/4` | 4 | 110 | percentiles 10 y 90 del CSV de rangos |
+| `mediana_optima/3` | 3 | 110 | mediana del CSV de rangos |
+| `rendimiento_esperado/4` | 4 | 11 | percentiles 10/50/90 de `rendimiento_kg_ha` |
+| **Total** | | **265** | |
+
+El archivo final pesa ~15 KB y carga en SWI-Prolog en milisegundos.
+
+### 11.3. Decisión metodológica: presencia (n>0) en lugar de rendimiento positivo
+
+Para `cultivo_en_region/2` se evaluaron dos criterios:
+
+- Filtrar por `rendimiento_kg_ha > 0` (rechazar campañas catastróficas).
+- Simple presencia en el dataset (`n > 0`).
+
+Se eligió **simple presencia**. La razón es agronómica: el hecho "avena se cultiva en la región pampeana" es verdadero aunque algunas campañas sean catastróficas o sean siembras para verdeo con cosecha intencionalmente cero. Filtrar por rendimiento > 0 ocultaría información válida sobre dónde el cultivo es realmente parte del calendario productivo. La consecuencia se ve en el archivo: hay 20 pares cultivo×region, y casos como `cultivo_en_region(avena, pampeana)` aparecen aunque la avena tiene una distribución de rendimientos muy abierta hacia 0 (forrajera).
+
+### 11.4. Convenciones de redondeo
+
+Para que los hechos Prolog sean legibles sin sacrificar utilidad estadística:
+
+- **Variables agronómicas continuas** (pH, °C, mm, %): 2 decimales. Es la precisión típica con la que un agrónomo escribiría estos valores en un informe.
+- **Rendimientos** (kg/ha): números enteros. Un kg/ha es la unidad natural y reportar decimales sería ruido.
+
+Esta política se aplica de manera uniforme y permite que tanto las reglas Prolog como un lector humano puedan razonar sobre los valores sin distracciones de notación.
+
+### 11.5. Validación con pyswip
+
+Después de regenerar el `.pl`, el propio script lo carga vía pyswip en SWI-Prolog y corre cinco consultas de aceptación. Si alguna falla, el script aborta con error explícito en lugar de dejar pasar un archivo Prolog roto:
+
+| # | Consulta | Resultado esperado | Resultado obtenido |
+|---|---|---|---|
+| 1 | `cultivo_soportado(soja)` | true | true |
+| 2 | `cultivo_en_region(arroz, nea)` | true | true |
+| 3 | `cultivo_en_region(arroz, pampeana)` | false | false |
+| 4 | `rango_optimo(soja, ph, P10, P90)` | P10≈6.18, P90≈6.96 | P10=6.18, P90=6.96 |
+| 5 | `rendimiento_esperado(maiz, P10, MED, P90)` | valores válidos | P10=3000, MED=5900, P90=9000 |
+
+Esta validación in-process garantiza que **el `.pl` generado es siempre cargable**: nunca se commitea un archivo de hechos roto al repositorio.
+
+### 11.6. Por qué este puente importa para la Fase IV
+
+La consigna del trabajo final exige aporte propio en Fase IV: integración real entre lo subsímbolico (datos) y lo simbólico (reglas). Con este generador se materializa el primero de los dos puentes anunciados en CLAUDE.md:
+
+> "Los rangos óptimos no están hardcodeados en las reglas Prolog; provienen de percentiles calculados sobre el dataset consolidado de Argentina."
+
+Esto es defensivamente sólido para la presentación oral: cualquier cuestionamiento sobre "de dónde sacaste estos umbrales" se responde mostrando la trazabilidad del pipeline `dataset_maestro.csv → notebook 02 → CSV de rangos → script Python → hechos Prolog`. Y si en el futuro se actualizan los datos del dataset, basta con regenerar y todas las reglas del sistema experto pasan a usar los nuevos rangos sin que el código simbólico cambie una línea.
+
+---
+
+## 12. Diseño de las reglas del sistema experto
+
+Esta sección documenta la capa simbólica del sistema (Fase III): cómo está organizada, qué razona y por qué cada bloque de reglas se separó como se separó.
+
+### 12.1. Estructura modular: 6 archivos en `src/prolog/`
+
+```
+src/prolog/
+├── hechos_generados.pl      # auto-generado desde Python (no editar)
+├── hechos_expertos.pl       # conocimiento agronómico cargado a mano
+├── reglas_aptitud.pl        # ¿es apto este cultivo para este lote?
+├── reglas_riesgo.pl         # ¿qué riesgos enfrenta?
+├── reglas_recomendacion.pl  # ¿recomendar o no, con qué observaciones?
+└── agrosmart.pl             # punto de entrada (consult de los 5 anteriores)
+```
+
+`agrosmart.pl` es el único archivo que Python necesita cargar. Mediante `:- consult/1` con paths relativos encadena todas las dependencias. SWI-Prolog resuelve los paths relativos al directorio del archivo que contiene la directiva, por lo que el sistema funciona con `swipl src/prolog/agrosmart.pl` desde cualquier cwd.
+
+### 12.2. Hechos expertos cargados a mano (`hechos_expertos.pl`)
+
+Hay conocimiento agronómico que **no se puede derivar estadísticamente** del dataset y debe codificarse a partir de bibliografía (INTA, FAO):
+
+| Predicado | Hechos | Significado |
+|---|---|---|
+| `ciclo/2` | 11 | Cultivo de verano (oct-mar) o invierno (abr-nov) |
+| `sensible_helada/1` | 7 | Cultivos afectados por heladas tempranas en otoño durante llenado de grano |
+| `necesita_vernalizacion/1` | 3 | Cereales que requieren acumulación de horas de frío para inducir floración |
+| `cultivo_principal/1`, `cultivo_alternativo/1`, `cultivo_forrajero/1`, `cultivo_industrial/1` | 11 (4+4+2+1) | Categorización funcional del cultivo |
+| `predecesor_recomendado/2` | 9 | Sugerencias de rotación según buenas prácticas |
+
+Los 11 cultivos del proyecto aparecen exactamente una vez en `ciclo/2`: 7 de verano y 4 de invierno. Esto se valida explícitamente al construir el archivo.
+
+### 12.3. Reglas de aptitud (`reglas_aptitud.pl`)
+
+Asumen que el lote bajo análisis tiene asociados dos predicados externos:
+
+```prolog
+region_lote(Lote, Region).
+valor_lote(Lote, Variable, Valor).   % por cada variable agronómica
+```
+
+Estos hechos los va a generar el **bridge Python↔Prolog** en la Fase IV cuando reciba las coordenadas de un lote y consulte las APIs en tiempo real. La capa simbólica está desacoplada: razona sobre el lote sin saber cómo se obtuvieron sus datos.
+
+Predicados expuestos:
+
+| Predicado | Significado |
+|---|---|
+| `en_rango_optimo(Lote, Cultivo, Variable)` | El valor del lote para esa variable cae dentro del rango P10..P90 del cultivo |
+| `viable_geograficamente(Lote, Cultivo)` | El cultivo se siembra en la región del lote |
+| `apto_suelo(Lote, Cultivo)` | pH, materia orgánica y arcilla en rango |
+| `apto_clima(Lote, Cultivo)` | Precipitación y temperatura media en rango |
+| `apto(Lote, Cultivo)` | Las tres condiciones anteriores se cumplen simultáneamente |
+| `apto_parcial_suelo(Lote, Cultivo)` | Suelo OK, clima fuera de rango (mitigable con riego o variedad) |
+| `apto_parcial_clima(Lote, Cultivo)` | Clima OK, suelo fuera de rango (mitigable con enmiendas) |
+
+Las dos formas de aptitud parcial son útiles para no perder información: muchos cultivos podrían ir bien en un lote con manejo específico, y descartarlos por completo daría un reporte demasiado restrictivo.
+
+### 12.4. Reglas de riesgo (`reglas_riesgo.pl`)
+
+Diagnostican siete riesgos agronómicos. Cada uno se expresa como un predicado de aridad 2, y un agregador `riesgo/3` permite enumerarlos vía `findall/3`:
+
+| Riesgo | Condición | Notas |
+|---|---|---|
+| `riesgo_sequia` | precipitación < P10 del cultivo | Estrés hídrico de fondo |
+| `riesgo_exceso_hidrico` | precipitación > P90 del cultivo | Encharcamiento, fungosis |
+| `riesgo_estres_termico` | temp_media > P90 del cultivo | Reduce llenado de grano |
+| `riesgo_helada` | sensible_helada(Cultivo), días_helada > 5 | Solo cultivos sensibles |
+| `riesgo_nutricional` | MO < 2.0 % y arena > 50 % | Déficit estructural del suelo |
+| `riesgo_acidez` | pH < 5.5 | Limita disponibilidad de P |
+| `riesgo_alcalinidad` | pH > 8.0 | Limita micronutrientes |
+
+El predicado `todos_los_riesgos/3` devuelve la lista completa de riesgos detectados para una combinación lote/cultivo (lista vacía si no hay).
+
+Los umbrales de los **tres primeros riesgos** vienen de `hechos_generados.pl` (P10/P90 estadísticos) y por lo tanto son cultivo-específicos: lo que es sequía para soja no lo es para trigo. Los **cuatro últimos** (helada con umbral 5 días, nutricional con MO/arena, acidez con pH 5.5, alcalinidad con pH 8.0) son umbrales agronómicos absolutos de literatura, válidos transversalmente para todos los cultivos extensivos.
+
+### 12.5. Distinción crítica: riesgo crítico vs no crítico
+
+Esta es una decisión de diseño importante. No todos los riesgos invalidan una recomendación:
+
+**Riesgos críticos (descartan la recomendación):**
+- Sequía: estrés hídrico de fondo, no se mitiga sin riego.
+- Helada: pérdida directa de área cosechable en cultivo sensible.
+- Nutricional: déficit estructural del suelo (no se arregla en una campaña).
+
+**Riesgos no críticos (se reportan como observación):**
+- Exceso hídrico: el productor puede ajustar manejo (drenaje, fecha de siembra).
+- Estrés térmico: se puede mitigar con elección de variedad de ciclo más corto.
+- Acidez: se corrige con encalado.
+- Alcalinidad: se mitiga con manejo o cultivo tolerante.
+
+La diferencia se materializa en el predicado `riesgo_critico/2` (3 cláusulas, una por cada riesgo crítico). Una recomendación se emite si `apto/2` se cumple **y** `\+ riesgo_critico/2` también. El productor recibe la recomendación junto con la lista completa de riesgos no críticos para que pueda planificar las mitigaciones necesarias.
+
+### 12.6. API pública: `reporte_lote/4`
+
+Es el predicado de más alto nivel que va a consumir el bridge Python↔Prolog:
+
+```prolog
+reporte_lote(Lote, Recomendados, NoRecomendados, AptosParciales).
+```
+
+Para un lote dado devuelve tres listas:
+
+- **Recomendados:** cultivos aptos sin riesgos críticos.
+- **NoRecomendados:** cultivos viables geográficamente pero no aptos plenos.
+- **AptosParciales:** cultivos aptos solo en suelo o solo en clima (mitigables).
+
+Esto es exactamente la respuesta a la pregunta 1 de la cascada de decisión del proyecto ("¿qué cultivos son aptos?"), ya estructurada para presentación al usuario final.
+
+### 12.7. Validación end-to-end: lote_pergamino
+
+Para validar el sistema completo se construyó un lote de prueba con datos típicos pampeanos:
+
+| Variable | Valor | Comentario |
+|---|---|---|
+| región | pampeana | núcleo agrícola |
+| pH | 6.5 | neutro |
+| MO | 3.2 % | suelo fértil |
+| arcilla | 26 % | textura franco-limosa típica del núcleo |
+| precipitación | 750 mm | régimen normal |
+| temperatura media | 22 °C | datos de campaña verano |
+| días de helada | 0 | sin frío crítico |
+| arena | 12 % | textura no-arenosa |
+
+**Resultado del sistema:**
+
+- **Recomendados:** soja, maíz, sorgo, girasol — los cuatro grandes cultivos del verano pampeano. Esto coincide exactamente con lo que un agrónomo recomendaría para Pergamino con esos datos.
+- **NoRecomendados (no aptos plenos):** avena, cebada, centeno, maní, trigo. Notar que trigo y cebada también aparecen aparte en `AptosParciales` porque su suelo está OK; lo que falla es el clima de campaña verano que se aportó.
+- **AptosParciales:** trigo y cebada — el sistema reconoce honestamente que el suelo del lote es perfectamente apto para cereales de invierno y solo el clima del ciclo aportado los descalifica. No los descarta como "no aptos punto", lo cual sería injustamente restrictivo.
+- **Arroz:** correctamente descartado por `viable_geograficamente/2`, ya que `cultivo_en_region(arroz, pampeana)` no existe en el dataset (arroz solo en NEA).
+- **Casos de borde validados:** un `lote_seco` (300 mm) dispara `riesgo_sequia(_, soja)` por estar por debajo del P10 de soja; un `lote_acido` (pH 5.0) dispara `riesgo_acidez/2`.
+
+Las 10 consultas de aceptación pasaron en una sola corrida del script de validación, sin errores de sintaxis Prolog ni resultados inesperados. El sistema experto está listo para que la Fase IV (bridge Python↔Prolog) consulte `reporte_lote/4` con coordenadas reales y devuelva una recomendación argumentada al usuario.
