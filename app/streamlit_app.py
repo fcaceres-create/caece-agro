@@ -57,8 +57,8 @@ _logger.info(
 # Configuración de página
 # ---------------------------------------------------------------------
 st.set_page_config(
-    page_title="AgroSmart — Defensa TFI",
-    page_icon="🌱",
+    page_title="AgroSmart - TFI CAECE",
+    page_icon="🌾",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -70,26 +70,79 @@ def _inicializar_sistema() -> SistemaAgroSmart:
     return SistemaAgroSmart()
 
 
+def _cargar_logo_caece() -> Path | None:
+    """Devuelve la ruta del logo institucional si existe; None si no.
+
+    El header maneja graciosamente la ausencia del archivo: en lugar de
+    romper, simplemente omite la imagen y muestra solo el texto. Útil
+    para ambientes donde el .png aún no fue incorporado o se movió.
+    """
+    ruta = RAIZ / "app" / "assets" / "caece_logo.png"
+    return ruta if ruta.exists() else None
+
+
 # ---------------------------------------------------------------------
-# Header
+# Header institucional
 # ---------------------------------------------------------------------
 def render_header() -> None:
-    st.title("🌾 AgroSmart — Recomendación de cultivos para Argentina")
-    st.markdown(
-        "Sistema híbrido **(Prolog + Random Forest)** para recomendación "
-        "de cultivos extensivos en Argentina."
-    )
-    st.caption(
-        "11 cultivos · 30 departamentos · 25 campañas (2000/01–2024/25) · "
-        "3.786 registros · 265 hechos Prolog generados desde el dataset"
-    )
+    """Header con identidad CAECE: logo a la izquierda + bloque institucional."""
+    col_logo, col_texto, _col_pad = st.columns([1, 4, 1])
+
+    logo = _cargar_logo_caece()
+    with col_logo:
+        if logo is not None:
+            st.image(str(logo), width=120)
+        # Si no hay logo, dejamos la columna vacía: el layout sigue
+        # balanceado pero sin marco institucional visual.
+
+    with col_texto:
+        st.title("🌾 AgroSmart")
+        st.markdown(
+            "**Sistema híbrido de decisión agronómica para Argentina** — "
+            "razonamiento simbólico (Prolog) + predicción cuantitativa "
+            "(Random Forest)."
+        )
+        st.caption(
+            "Universidad CAECE — Maestría en Gestión y Desarrollo de IA  ·  "
+            "Trabajo Final Integrador — Fundamentos de IA  ·  Mayo 2026"
+        )
 
 
+# ---------------------------------------------------------------------
+# Footer institucional
+# ---------------------------------------------------------------------
 def render_footer() -> None:
+    """Footer con 3 bloques (institucional / académico / autores) + disclaimer."""
     st.divider()
+
+    col_inst, col_acad, col_autores = st.columns(3)
+
+    with col_inst:
+        st.markdown(
+            "**Universidad CAECE**  \n"
+            "Maestría en Gestión y Desarrollo de IA  \n"
+            "Modalidad E-distancia"
+        )
+
+    with col_acad:
+        st.markdown(
+            "**Fundamentos de IA**  \n"
+            "Prof. Juan Miguel Azcurra  \n"
+            "1° Cuatrimestre 2026"
+        )
+
+    with col_autores:
+        st.markdown(
+            "**Autores**  \n"
+            "Fernando Cáceres  \n"
+            "Ezequiel Díaz Fernández  \n"
+            "Mayo 2026"
+        )
+
     st.caption(
-        "**TFI Fundamentos de IA — CAECE 2026**  ·  "
-        "Fernando Cáceres y Ezequiel  ·  Mayo 2026"
+        "Sistema desarrollado en el marco del Trabajo Final Integrador. "
+        "No usar para decisiones agronómicas en producción real sin "
+        "validación profesional."
     )
 
 

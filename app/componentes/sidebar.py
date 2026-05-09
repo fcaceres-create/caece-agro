@@ -152,6 +152,49 @@ def render_sidebar() -> bool:
         )
         _aplicar_ejemplo_si_cambio(ejemplo)
 
+        # --- Acerca del proyecto (cerrado por default) -------------------
+        with st.expander("📚 Acerca del proyecto", expanded=False):
+            st.markdown(
+                "## Trabajo Final Integrador\n"
+                "\n"
+                "**Materia:** Fundamentos de Inteligencia Artificial  \n"
+                "**Profesor:** Juan Miguel Azcurra  \n"
+                "**Carrera:** Maestría en Gestión y Desarrollo de IA  \n"
+                "**Modalidad:** E-distancia  \n"
+                "**Cuatrimestre:** 1° Cuatrimestre 2026  \n"
+                "**Universidad CAECE**\n"
+                "\n"
+                "---\n"
+                "\n"
+                "### Autores\n"
+                "\n"
+                "- Fernando Cáceres\n"
+                "- Ezequiel Díaz Fernández\n"
+                "\n"
+                "---\n"
+                "\n"
+                "### Recursos del proyecto\n"
+                "\n"
+                "- 🌐 [App desplegada](https://caece-agrosmart.streamlit.app)\n"
+                "- 📂 [Repositorio en GitHub](https://github.com/fcaceres-create/caece-agro)\n"
+                "\n"
+                "---\n"
+                "\n"
+                "### Sistema\n"
+                "\n"
+                "- 11 cultivos extensivos\n"
+                "- 30 departamentos\n"
+                "- 25 campañas (2000/01-2024/25)\n"
+                "- 3.786 registros\n"
+                "- 265 hechos Prolog generados\n"
+                "\n"
+                "### Stack\n"
+                "\n"
+                "- Python 3.11 + scikit-learn (Random Forest)\n"
+                "- SWI-Prolog 9.x (sistema experto)\n"
+                "- Streamlit + folium + plotly (interfaz)"
+            )
+
         st.divider()
 
         # --- Región ------------------------------------------------------

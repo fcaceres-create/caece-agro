@@ -177,9 +177,16 @@ caece-agro/
   [`docs/recuperacion_de_datos.md`](docs/recuperacion_de_datos.md).
 - **Marco general y setup local detallado**: [`CLAUDE.md`](CLAUDE.md).
 
+## Trabajo Final Integrador
+
+- **Materia:** Fundamentos de Inteligencia Artificial
+- **Profesor:** Juan Miguel Azcurra
+- **Carrera:** Maestría en Gestión y Desarrollo de IA
+- **Universidad:** CAECE — Modalidad E-distancia
+- **Cuatrimestre:** 1° Cuatrimestre 2026
+- **Fecha de entrega:** 22 de mayo de 2026
+
 ## Autores
 
 - Fernando Cáceres
 - Ezequiel Díaz Fernández
-
-Universidad CAECE — Maestría en Gestión y Desarrollo IA — Mayo 2026.
