@@ -943,3 +943,83 @@ Las pruebas visuales en el browser con los cuatro ejemplos pre-configurados conf
 - **El click de folium se materializa en el rerun siguiente**, no en el click mismo. Esto produce un pequeño retraso visual (~150–300 ms) entre clickear y ver el sidebar autocompletado. Es el patrón canónico de `streamlit_folium` y es aceptable para la defensa, pero si en algún momento hace falta interactividad inmediata habría que migrar el mapa a pydeck o a un componente custom JS.
 - **El detalle por cultivo es donde la app gana valor real.** Los tres bloques previos (sidebar, mapa, reporte) ya estaban más o menos cubiertos por el CLI; lo que solo se puede comunicar visualmente es la tabla de check/cross y el boxplot con la predicción marcada. Esa es la sección que vale la pena ejercitar más en la defensa.
 - **Mejoras futuras** que quedaron fuera del alcance: persistir lotes evaluados en una base SQLite para historizar consultas (útil si la app se usa repetidamente), exportar el reporte a PDF para compartir con un asesor, y agregar un comparador lado a lado de dos lotes para ver el efecto de cambiar una sola variable. Ninguna es necesaria para la defensa, todas son extensiones naturales del diseño actual.
+
+---
+
+## 15. Deploy en Streamlit Cloud y personalización institucional
+
+Esta última sección documenta los dos hitos finales del proyecto técnico: el deploy productivo de la app en Streamlit Community Cloud —con un problema concreto a resolver durante el primer intento de build— y la personalización institucional con identidad CAECE para llevar la app de "demo técnica" a "entregable institucional" listo para la defensa oral.
+
+### 15.1. Preparación del repositorio para deploy
+
+Antes de subir la app a Streamlit Cloud se hizo un trabajo de saneamiento del repositorio para que el deploy arrancara listo para servir en lugar de tener que ejecutar el pipeline de entrenamiento desde cero.
+
+**Decisión: versionar artefactos pesados (~16 MB en total).** Aunque el `.gitignore` original excluía `data/processed/`, `data/modelos/` y los `.joblib` por considerarlos regenerables, ese criterio no se sostiene en un entorno de deploy: regenerar los 11 modelos en cada arranque de la app implicaría correr el notebook de EDA, ejecutar el script de generación de hechos Prolog y entrenar Random Forest, todo lo cual tarda minutos y requiere acceso a las APIs (que en tiempo de inferencia no debería tocarse). La decisión fue versionar los artefactos críticos: [data/processed/dataset_maestro.csv](../data/processed/dataset_maestro.csv) (1,06 MB), los 11 archivos `data/modelos/*.joblib` (~14,5 MB), [data/modelos/reporte_entrenamiento.json](../data/modelos/reporte_entrenamiento.json), [data/processed/rangos_optimos_por_cultivo.csv](../data/processed/rangos_optimos_por_cultivo.csv) y [src/prolog/hechos_generados.pl](../src/prolog/hechos_generados.pl).
+
+**Política mixta del `.gitignore`.** Para no eliminar la regla global `*.joblib` (que protege contra commitear joblibs efímeros que pudieran aparecer en otras carpetas) se usó una excepción quirúrgica: la regla queda en su lugar y se agrega `!data/modelos/*.joblib` específicamente. El mismo criterio mixto se aplica a los CSVs intermedios del proceso de consolidación diferencial (`dataset_maestro_pampeana.csv`, `dataset_maestro_extra.csv`) y a los `demo_*.json`, que siguen excluidos por ser regenerables y no pertenecer al runtime.
+
+**Split de requirements.** Se separó [requirements.txt](../requirements.txt) en dos archivos. El de runtime contiene únicamente lo necesario para que la app arranque (pandas, numpy, scikit-learn, joblib, pyswip, streamlit, folium, streamlit-folium, plotly). El nuevo [requirements-dev.txt](../requirements-dev.txt) trae lo del runtime más las dependencias de desarrollo local (jupyter, matplotlib, seaborn, tqdm, pytest, python-docx, requests). Esta separación reduce el tamaño del entorno virtual del deploy y acelera el build, además de dejar explícito qué es runtime y qué es solo dev.
+
+**Configuración del entorno de deploy.** Se agregaron dos archivos nuevos en la raíz del repo. [packages.txt](../packages.txt) declara las dependencias a nivel sistema operativo que Streamlit Cloud instala con `apt`; en este caso un único paquete: `swi-prolog-nox` (la versión sin GUI, suficiente para un entorno headless y más liviana que la versión completa). [.streamlit/config.toml](../.streamlit/config.toml) configura el server (`headless = true`, CORS y XSRF deshabilitados como recomienda la documentación oficial) y el tema visual (base oscura con colores institucionales).
+
+**Robustecimiento del bridge para Linux.** El integrador en [src/bridge/integrador.py](../src/bridge/integrador.py) recibió un trabajo de hardening. La inicialización de Prolog se desglosó en cuatro etapas con `try/except` específicos: import de `pyswip`, instanciación de la VM, consulta del archivo `.pl` y declaración de los predicados dinámicos. Cada etapa entrega un mensaje de error diferenciado por sistema operativo (Linux/Streamlit Cloud sugiere revisar `packages.txt`; Windows local sugiere revisar `SWI_HOME_DIR` y `PATH`). Esto hace que un fallo en deploy sea diagnosticable inmediatamente en lugar de aparecer como un traceback genérico de pyswip.
+
+**Actualización de la API deprecada de Streamlit.** Las cuatro llamadas que usaban `use_container_width=True` (en `app/componentes/sidebar.py`, `mapa.py` y dos en `detalle_cultivo.py`) se migraron a la API nueva `width="stretch"`. La librería `streamlit-folium` aceptó el cambio sin novedades; el warning de deprecación desapareció de los logs.
+
+**Reescritura del README.** Se rehízo desde cero para incluir el badge de Streamlit, el link a la app desplegada, instrucciones de setup multi-OS (Windows, Linux, macOS), comandos para regenerar artefactos desde cero y el árbol de directorios actualizado.
+
+### 15.2. Primer intento de deploy: el problema con Python 3.14
+
+La configuración de la app en Streamlit Community Cloud apuntó al repositorio `fcaceres-create/caece-agro`, branch `main`, archivo principal `app/streamlit_app.py`, y URL pública `caece-agrosmart.streamlit.app`.
+
+El primer build se quedó colgado tras la línea `Resolved 54 packages in 1.04s` durante más de diez minutos sin avance visible en los logs. La hipótesis que surgió tras inspeccionar la configuración fue que el problema venía de la versión de Python: por defecto, Streamlit Cloud usa Python 3.14.4, una versión que salió en octubre de 2025. Las librerías del stack científico (numpy, scikit-learn, pyswip) todavía no tienen wheels precompilados para 3.14, lo que obliga al proceso de instalación a compilar desde fuente. Compilar numpy desde código C contra una versión de Python tan reciente puede tardar veinte minutos o más, y en algunos casos falla silenciosamente sin emitir error explícito.
+
+**Solución: bajar la versión de Python a 3.11.15.** Streamlit Cloud expone la versión de Python como un setting editable en *App settings → General → Python version*. Se eligió 3.11.15 por dos razones convergentes: es la misma versión que se usa en el desarrollo local (compatibilidad garantizada respecto del entorno donde se entrenaron los modelos joblib, que son sensibles a la versión de scikit-learn y por extensión a la versión de Python) y existen wheels precompilados para todas las dependencias del proyecto en esa versión.
+
+### 15.3. Deploy exitoso con Python 3.11.15
+
+Tras forzar la versión de Python, el siguiente build completó en menos de cinco minutos. Los logs clave fueron:
+
+```
+Setting up swi-prolog-nox (9.2.9+dfsg-1+b1)
+Using Python 3.11.15 environment at /home/adminuser/venv
+Resolved 54 packages in 214ms
+Installed 4 packages in 34ms
+Uvicorn server started
+```
+
+La diferencia respecto del primer intento es de un orden de magnitud: cinco minutos en lugar de más de veinte. El paquete crítico del proyecto, SWI-Prolog 9.2.9, quedó instalado correctamente desde [packages.txt](../packages.txt) en una sola línea de `apt`. Esto valida la decisión documentada en §15.1 de no incluir la versión completa con GUI: la headless es suficiente y la build es notablemente más rápida.
+
+### 15.4. Validación end-to-end en producción
+
+Una vez que la app respondió en `https://caece-agrosmart.streamlit.app`, se ejecutaron tres pruebas funcionales para confirmar que el comportamiento en Linux es idéntico al validado en Windows local.
+
+**Prueba 1 — Lote pre-configurado "Pergamino típico".** Cargado desde el selectbox del sidebar y evaluado, devolvió cuatro cultivos recomendados con predicciones idénticas a las locales: soja 3.359 kg/ha, maíz 9.126 kg/ha (clasificado como rendimiento alto por superar el P90 zonal de 9.000 kg/ha), girasol 2.215 kg/ha y sorgo 5.462 kg/ha. Coincide exactamente con la salida del demo CLI documentada en §13.
+
+**Prueba 2 — Click en marcador del mapa.** Clickeando sobre el marker de Pergamino, los siete sliders del sidebar se autocompletaron con la mediana histórica del departamento: pH 6,53, materia orgánica 3,19%, lluvia 602 mm, temperatura media 21,3 °C. La interacción canónica de `st_folium` (click → rerun → autocomplete) funcionó sin diferencia respecto del entorno local.
+
+**Prueba 3 — Detalle por cultivo.** Abriendo el expander "🔬 Detalle por cultivo" y seleccionando soja, la tabla "Valor del lote vs rango óptimo" mostró las cinco variables agronómicas todas en rango, y el boxplot de distribución histórica renderizó con la línea vertical roja de la predicción del Random Forest superpuesta dentro de la nube de campañas. La explainability visual del sistema —el aporte clave de la app por encima del CLI— se confirmó funcional en producción.
+
+La cascada Python ↔ Prolog se comporta en Linux con SWI-Prolog 9.2.9 igual que en Windows con SWI-Prolog 10.0.2. La portabilidad de pyswip 0.3.2 quedó así validada en el entorno productivo, no solo en el de desarrollo.
+
+### 15.5. Personalización institucional con identidad CAECE
+
+Con la app funcionando y validada, el último paso fue convertirla en un entregable institucional con identidad CAECE en lugar de una app genérica con título "AgroSmart" sobre fondo neutro.
+
+**Cambios en [app/streamlit_app.py](../app/streamlit_app.py).** El `set_page_config` pasó a `page_title="AgroSmart - TFI CAECE"` con `page_icon="🌾"` (espiga, más coherente con cultivos extensivos que el brote de la primera versión). Se agregó un helper `_cargar_logo_caece()` que busca el archivo `app/assets/caece_logo.png` y devuelve la ruta solo si existe, sin romper si está ausente. El `render_header()` se reescribió con `st.columns([1, 4, 1])`: en la columna izquierda el logo institucional a 120 px de ancho fijo; en la central el título dominante con el subtítulo descriptivo y una línea de caption con el contexto académico (universidad, carrera, materia, fecha); la columna derecha queda intencionalmente vacía como respiro visual. El `render_footer()` se rehízo con tres columnas paralelas (institucional, académico, autores) más un `st.caption` final con el disclaimer académico.
+
+**Cambios en [app/componentes/sidebar.py](../app/componentes/sidebar.py).** Se agregó un `st.expander("📚 Acerca del proyecto", expanded=False)` entre el selectbox de carga de ejemplos y el primer divider. Cerrado por defecto para no saturar el sidebar; al abrirlo despliega los datos del TFI (materia, profesor, carrera, modalidad, cuatrimestre, universidad), los autores, los recursos del proyecto (URL de la app desplegada y URL del repositorio en GitHub), las métricas del sistema y un resumen del stack tecnológico. Toda la información se mantiene en el sidebar para que el evaluador pueda consultarla sin perder de vista el reporte que está mirando.
+
+**Activos visuales.** El logo oficial de CAECE se descargó del sitio institucional y se colocó en [app/assets/caece_logo.png](../app/assets/caece_logo.png). La carpeta `app/assets/` quedó versionada porque los recursos visuales forman parte del deploy. Un breve [README](../app/assets/README.md) explica la convención.
+
+**Decisión: sin custom CSS.** Toda la personalización institucional se construyó con utilidades nativas de Streamlit (`st.columns`, `st.image`, `st.markdown`, `st.caption`, `st.expander`). Esto preserva la coherencia con el tema dark configurado en `.streamlit/config.toml` y evita la deuda técnica que viene con los hojas de estilo a medida en un framework reactivo. El resultado visual queda profesional y coherente con la identidad CAECE sin escribir una sola línea de CSS.
+
+### 15.6. Conclusión del proyecto técnico
+
+El sistema AgroSmart en su versión final integra cinco fases de trabajo en un único producto reproducible y desplegado.
+
+**Recapitulación numérica del alcance.** El repositorio contiene aproximadamente 7.000 líneas de código Python (3.615 en `src/`, 1.045 en `app/`, 2.341 en `scripts/` y 211 en `tests/`) y cerca de 800 líneas de Prolog distribuidas entre los cinco archivos de reglas (487 líneas de aptitud, riesgo, recomendación, hechos expertos y el archivo principal `agrosmart.pl`) y el archivo auto-generado [hechos_generados.pl](../src/prolog/hechos_generados.pl) (311 líneas con los 265 hechos derivados estadísticamente del dataset). La capa cuantitativa está formada por 11 modelos Random Forest entrenados independientemente, uno por cultivo. El dataset maestro consolida cuatro fuentes de información: producción y rendimientos del MAGyP, clima histórico de reanálisis ERA5 vía Open-Meteo, propiedades edáficas de SoilGrids, y conocimiento agronómico de cátedra y bibliografía (INTA, FAO) cargado a mano en `hechos_expertos.pl`. El producto resultante son 3.786 registros georreferenciados que cubren 11 cultivos sobre 30 departamentos a lo largo de 25 campañas. Seis tests `pytest` validan end-to-end el comportamiento del bridge.
+
+**Valoración del aprendizaje.** El sistema combina lo cuantitativo —Random Forest entrenado sobre 25 campañas reales de rendimientos argentinos— y lo simbólico —reglas Prolog cuyos rangos óptimos se derivan estadísticamente del propio dataset, no de una tabla copiada de un manual—. El bridge en cascada de tres etapas (aptitud simbólica → predicción cuantitativa → reporte integrado con clasificación cualitativa contra los percentiles esperados) es el aporte propio del trabajo: integrar ambas capas para que la decisión final sea simultáneamente explicable y cuantificable. Esa integración no es un wrapper donde dos motores opinan en paralelo sino una cascada donde la salida del modelo se confronta contra los percentiles que conoce el sistema simbólico, y los desacuerdos se reportan como observaciones explícitas en lugar de ocultarse.
+
+El sistema desplegado en producción reconoce honestamente sus propios límites. La cobertura geográfica efectiva es Pampeana, NOA y NEA: Cuyo y Patagonia quedaron sin filas porque MAGyP no reporta como cultivos extensivos los cereales bajo riego en Mendoza ni la avena para verdeo patagónica, una limitación de la fuente de datos que el sistema no puede resolver. El R² del modelo de maní cae a 0,02 porque sus drivers reales (variedad genética, fecha de siembra, calcio del suelo) no están en el dataset, una limitación que el sistema documenta en lugar de disimular. Frente a campañas catastróficas como la sequía de 2022/23, donde 320 mm de lluvia están por debajo del P10 de todos los cultivos extensivos pampeanos, el sistema responde con la lista de recomendados vacía: agronómicamente correcto, prácticamente conservador. Estas tres limitaciones están descriptas en el informe TFI ([docs/informe.docx](informe.docx)) y representan la frontera natural del trabajo, no defectos a corregir antes de la entrega.
