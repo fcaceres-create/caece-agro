@@ -8,6 +8,6 @@ artefactos que consume el resto del sistema:
   cultivo/región usados para parametrizar las consultas a las APIs.
 - `consolidacion`: ensambla el dataset maestro georreferenciado a partir
   de MAGyP + Open-Meteo + SoilGrids.
-- `generador_hechos_prolog`: a partir del dataset procesado, calcula
+- `generar_hechos_prolog`: a partir del dataset procesado, calcula
   percentiles por cultivo y emite `hechos_generados.pl`.
 """

@@ -86,7 +86,7 @@ agrosmart/
 │   │   ├── __init__.py
 │   │   ├── departamento.py         # constantes geográficas
 │   │   ├── consolidacion.py    # construye dataset maestro
-│   │   └── generador_hechos_prolog.py
+│   │   └── generar_hechos_prolog.py
 │   ├── modelos/
 │   │   ├── __init__.py
 │   │   └── regresion_rendimiento.py
@@ -287,7 +287,7 @@ Archivos sensibles que NO se versionan (ya cubiertos en .gitignore):
 Documentar acá los comandos frecuentes a medida que se construyen:
 - Activar entorno: `.venv\Scripts\activate`
 - Construir dataset maestro: `python -m src.procesamiento.consolidacion`
-- Generar hechos Prolog: `python -m src.procesamiento.generador_hechos_prolog`
+- Generar hechos Prolog: `python -m src.procesamiento.generar_hechos_prolog`
 - Lanzar Jupyter: `jupyter notebook`
 - Correr tests: `pytest tests/`
 - Consultar el sistema experto: `swipl src/prolog/agrosmart.pl`

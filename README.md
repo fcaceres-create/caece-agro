@@ -61,7 +61,7 @@ agrosmart/
 │   ├── procesamiento/          # consolidación y generación de hechos
 │   │   ├── departamentos.py
 │   │   ├── consolidacion.py
-│   │   └── generador_hechos_prolog.py
+│   │   └── generar_hechos_prolog.py
 │   ├── modelos/                # modelos estadísticos
 │   │   └── regresion_rendimiento.py
 │   ├── prolog/                 # capa simbólica
