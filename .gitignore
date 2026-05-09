@@ -32,6 +32,9 @@ data/raw/
 !.vscode/extensions.json
 .idea/
 
+# Configuración local de Claude Code (permisos y settings personales).
+.claude/
+
 # Sistema operativo
 Thumbs.db
 desktop.ini
