@@ -34,6 +34,7 @@ if str(RAIZ) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
+from app.componentes.consola_prolog import render_consola_prolog  # noqa: E402
 from app.componentes.detalle_cultivo import render_detalle_cultivo  # noqa: E402
 from app.componentes.mapa import render_mapa  # noqa: E402
 from app.componentes.reporte import render_reporte  # noqa: E402
@@ -191,17 +192,28 @@ def main() -> None:
     reporte = st.session_state.get("ultimo_reporte")
     lote = st.session_state.get("ultimo_lote")
 
-    if reporte is None:
-        st.divider()
-        st.info(
-            "Configurá un lote en el sidebar y apretá **Evaluar lote** "
-            "para ver la cascada de decisión completa."
-        )
-    else:
-        st.divider()
-        st.subheader("📋 Reporte de evaluación")
-        render_reporte(reporte)
-        render_detalle_cultivo(sistema, lote, reporte)
+    # Layout principal en dos tabs: el reporte de evaluación (sólo
+    # poblado tras apretar "Evaluar lote") y la consola Prolog
+    # (siempre disponible: muestra el sistema simbólico independiente
+    # de la cascada).
+    st.divider()
+    tab_reporte, tab_consola = st.tabs(
+        ["📋 Reporte de evaluación", "🔍 Consola Prolog"]
+    )
+
+    with tab_reporte:
+        if reporte is None:
+            st.info(
+                "Configurá un lote en el sidebar y apretá **Evaluar lote** "
+                "para ver la cascada de decisión completa."
+            )
+        else:
+            st.subheader("📋 Reporte de evaluación")
+            render_reporte(reporte)
+            render_detalle_cultivo(sistema, lote, reporte)
+
+    with tab_consola:
+        render_consola_prolog(sistema)
 
     render_footer()
 

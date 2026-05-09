@@ -201,3 +201,117 @@ def test_clasificacion_rendimiento_alto_medio_bajo() -> None:
     assert _clasificar_rendimiento(4000, esperado) == "medio"
     assert _clasificar_rendimiento(2500, esperado) == "bajo"
     assert _clasificar_rendimiento(1500, esperado) == "muy_bajo"
+
+
+# ---------------------------------------------------------------------
+# Tests de consultar_prolog (consola Prolog del tab de la app)
+# ---------------------------------------------------------------------
+# El método se prueba con sandboxing en sus dos modos: False para las
+# 8 consultas predefinidas (que ya auditamos), True para todo lo que
+# entre por la consola libre del usuario.
+def test_consulta_solucion_unica_true(sistema: SistemaAgroSmart) -> None:
+    """Una consulta sin variables que tiene éxito devuelve 'true.'."""
+    r = sistema.consultar_prolog(
+        "apto(lote_pergamino, soja).", sandboxing=False
+    )
+    assert r["exitosa"] is True
+    assert r["error"] is None
+    assert r["output_formateado"] == "true."
+    assert r["soluciones"] == [{}]
+
+
+def test_consulta_sin_soluciones_false(sistema: SistemaAgroSmart) -> None:
+    """Sin soluciones devuelve 'false.' (estilo SWI-Prolog clásico)."""
+    r = sistema.consultar_prolog(
+        "apto(lote_pergamino, arroz).", sandboxing=False
+    )
+    assert r["exitosa"] is True
+    assert r["soluciones"] == []
+    assert r["output_formateado"] == "false."
+
+
+def test_consulta_multiples_soluciones_se_truncan(
+    sistema: SistemaAgroSmart,
+) -> None:
+    """between/3 con 100 soluciones se debe cortar en max_soluciones."""
+    r = sistema.consultar_prolog(
+        "between(1, 100, X).", sandboxing=False, max_soluciones=5
+    )
+    assert r["exitosa"] is True
+    assert len(r["soluciones"]) == 5
+    assert r["truncado"] is True
+    # Formato esperado: 5 bindings separados por " ;\n" + sufijo de truncado
+    assert "X = 1" in r["output_formateado"]
+    assert "X = 5" in r["output_formateado"]
+    assert "más soluciones" in r["output_formateado"]
+
+
+def test_consulta_sintaxis_invalida_devuelve_error(
+    sistema: SistemaAgroSmart,
+) -> None:
+    """Una consulta mal formada no debe romper Python; debe quedar exitosa=False."""
+    r = sistema.consultar_prolog("esto no es prolog", sandboxing=True)
+    assert r["exitosa"] is False
+    assert r["error"] is not None
+    assert r["output_formateado"].startswith("ERROR:")
+
+
+def test_consulta_predicado_bloqueado_por_regex(
+    sistema: SistemaAgroSmart,
+) -> None:
+    """halt y asserta deben ser rechazados antes incluso de llegar a sandbox."""
+    for consulta_peligrosa, predicado in [
+        ("halt.", "halt"),
+        ("asserta(cultivo_soportado(troll)).", "asserta"),
+        ("retract(cultivo_soportado(soja)).", "retract"),
+    ]:
+        r = sistema.consultar_prolog(consulta_peligrosa, sandboxing=True)
+        assert r["exitosa"] is False, f"{consulta_peligrosa} no se rechazó"
+        assert r["error"] is not None
+        assert predicado in r["error"], (
+            f"Esperaba '{predicado}' en r['error']; obtuve {r['error']!r}"
+        )
+
+
+def test_consulta_predicado_bloqueado_por_sandbox(
+    sistema: SistemaAgroSmart,
+) -> None:
+    """Predicados peligrosos que el regex no atrapa deben caer en sandbox.
+
+    `print/1` no está en nuestra lista negra explícita pero sandbox lo
+    rechaza por escribir a un stream global. Es nuestra red de contención.
+    """
+    r = sistema.consultar_prolog("print(hola).", sandboxing=True)
+    assert r["exitosa"] is False
+    assert r["error"] is not None
+    assert r["error"].startswith("sandbox:"), (
+        f"Esperaba prefijo 'sandbox:'; obtuve {r['error']!r}"
+    )
+
+
+def test_consulta_timeout_excedido(sistema: SistemaAgroSmart) -> None:
+    """Si una consulta no termina en `timeout` segundos, se aborta.
+
+    Usamos `between(1, 1e9, _)` que genera mil millones de soluciones
+    rápidas. Con timeout 0.1s y max_soluciones >> 0, el bucle
+    interno acumula soluciones hasta que el chequeo de tiempo decide
+    cortar y devolver error == 'timeout'.
+    """
+    r = sistema.consultar_prolog(
+        "between(1, 1000000000, _).",
+        sandboxing=False,
+        timeout=0.1,
+        max_soluciones=10**9,
+    )
+    assert r["exitosa"] is False
+    assert r["error"] == "timeout"
+    assert "tiempo límite" in r["output_formateado"]
+
+
+def test_consulta_sin_punto_final_se_normaliza(
+    sistema: SistemaAgroSmart,
+) -> None:
+    """Si el usuario olvida el '.' final, debe ejecutarse igual."""
+    r = sistema.consultar_prolog("apto(lote_pergamino, soja)", sandboxing=False)
+    assert r["exitosa"] is True
+    assert r["output_formateado"] == "true."

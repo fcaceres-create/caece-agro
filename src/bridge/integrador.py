@@ -33,6 +33,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -278,6 +280,258 @@ class _BackendProlog:
     def es_apto_parcial_suelo(self, lote_id: str, cultivo: str) -> bool:
         return bool(list(self.prolog.query(f"apto_parcial_suelo({lote_id}, {cultivo})")))
 
+    # -- consulta cruda (consola Prolog del tab del defensa) -------------
+    def consulta_cruda(
+        self,
+        consulta: str,
+        sandboxing: bool = True,
+        timeout: float = 5.0,
+        max_soluciones: int = 5,
+    ) -> dict:
+        """Ejecuta una consulta arbitraria y devuelve metadatos + soluciones.
+
+        Si sandboxing está activo, primero pasa por dos filtros:
+          (a) regex sintáctico contra una lista negra de predicados
+              destructivos (defensa en profundidad).
+          (b) `safe_goal/1` de library(sandbox), que es la garantía real.
+        Después ejecuta la consulta normal y mide el tiempo de cada
+        iteración para abortar si supera ``timeout`` segundos.
+
+        No usamos `call_with_time_limit/2` porque pyswip pierde el
+        non-determinism cuando el goal del usuario va envuelto en un
+        meta-call (between(1,N,X) devolvería solo la primera solución).
+
+        Devuelve un dict con:
+            consulta, exitosa, soluciones, output_formateado,
+            error, tiempo_ms, truncado
+        """
+        consulta_normalizada = _normalizar_consulta(consulta)
+        inicio = time.perf_counter()
+
+        # 1) Defensa en profundidad: rechazo sintáctico de patrones
+        # peligrosos antes de pasar a sandbox. Sandbox es la garantía
+        # real, pero esta capa atrapa intentos triviales más rápido y
+        # con un mensaje específico.
+        if sandboxing:
+            patron_bloqueado = _patron_predicado_bloqueado(consulta_normalizada)
+            if patron_bloqueado is not None:
+                return {
+                    "consulta": consulta_normalizada,
+                    "exitosa": False,
+                    "soluciones": [],
+                    "output_formateado": (
+                        f"ERROR: predicado bloqueado por la consola "
+                        f"({patron_bloqueado}). Use predicados del sistema "
+                        f"experto (apto/2, recomendar/2, "
+                        f"todos_los_riesgos/3, rango_optimo/4, "
+                        f"cultivo_soportado/1, etc.)."
+                    ),
+                    "error": f"predicado_bloqueado:{patron_bloqueado}",
+                    "tiempo_ms": (time.perf_counter() - inicio) * 1000.0,
+                    "truncado": False,
+                }
+
+        # 2) Sandbox: pyswip propaga las excepciones de safe_goal/1 como
+        # PrologError. Goal seguro → la query devuelve [{}] o bindings.
+        # Goal inseguro → tira excepción que capturamos con try/except.
+        if sandboxing:
+            try:
+                list(self.prolog.query(
+                    f"safe_goal(({consulta_normalizada}))"
+                ))
+            except Exception as exc:
+                mensaje = str(exc)
+                # Para errores típicos de sandbox extraemos solo la causa
+                # (lo demás es ruido del wrapper PrologError de pyswip).
+                causa_corta = _resumen_error_sandbox(mensaje)
+                return {
+                    "consulta": consulta_normalizada,
+                    "exitosa": False,
+                    "soluciones": [],
+                    "output_formateado": (
+                        f"ERROR: la consulta no pasó el chequeo de sandbox.\n"
+                        f"{causa_corta}"
+                    ),
+                    "error": f"sandbox:{causa_corta}",
+                    "tiempo_ms": (time.perf_counter() - inicio) * 1000.0,
+                    "truncado": False,
+                }
+
+        # 3) Ejecución real. Sin wrapper de timeout (rompe non-determinism
+        # con pyswip); usamos timeout a nivel Python: cortamos si una
+        # solución tarda más de `timeout` o si ya juntamos max_soluciones.
+        soluciones: list[dict[str, Any]] = []
+        truncado = False
+        generador = None
+        try:
+            generador = self.prolog.query(consulta_normalizada)
+            for sol in generador:
+                if (time.perf_counter() - inicio) > timeout:
+                    return {
+                        "consulta": consulta_normalizada,
+                        "exitosa": False,
+                        "soluciones": soluciones,
+                        "output_formateado": (
+                            f"ERROR: tiempo límite excedido "
+                            f"({timeout}s) tras {len(soluciones)} soluciones."
+                        ),
+                        "error": "timeout",
+                        "tiempo_ms": (time.perf_counter() - inicio) * 1000.0,
+                        "truncado": False,
+                    }
+                if len(soluciones) >= max_soluciones:
+                    truncado = True
+                    break
+                soluciones.append(_normalizar_solucion(sol))
+        except Exception as exc:
+            mensaje = str(exc)
+            return {
+                "consulta": consulta_normalizada,
+                "exitosa": False,
+                "soluciones": [],
+                "output_formateado": f"ERROR: {mensaje}",
+                "error": f"runtime:{mensaje}",
+                "tiempo_ms": (time.perf_counter() - inicio) * 1000.0,
+                "truncado": False,
+            }
+        finally:
+            if generador is not None:
+                try:
+                    generador.close()
+                except Exception:
+                    pass
+
+        return {
+            "consulta": consulta_normalizada,
+            "exitosa": True,
+            "soluciones": soluciones,
+            "output_formateado": _formatear_salida_prolog(
+                soluciones, truncado
+            ),
+            "error": None,
+            "tiempo_ms": (time.perf_counter() - inicio) * 1000.0,
+            "truncado": truncado,
+        }
+
+
+# ---------------------------------------------------------------------
+# Helpers para la consola Prolog
+# ---------------------------------------------------------------------
+# Predicados peligrosos que bloqueamos sintácticamente como defensa
+# en profundidad además de safe_goal/1. Match palabra-completa para
+# no confundir, por ej, "asserta" con un identificador legítimo.
+_PREDICADOS_BLOQUEADOS: tuple[str, ...] = (
+    "halt",
+    "assert", "asserta", "assertz",
+    "retract", "retractall",
+    "abolish",
+    "consult", "use_module", "ensure_loaded", "load_files",
+    "shell", "system",
+    "open", "close", "read_term", "read", "write",
+    "process_create",
+)
+_REGEX_PREDICADO_BLOQUEADO = re.compile(
+    r"\b(" + "|".join(re.escape(p) for p in _PREDICADOS_BLOQUEADOS) + r")\s*\("
+)
+
+
+def _normalizar_consulta(consulta: str) -> str:
+    """Quita el punto final y espacios. pyswip rechaza el punto."""
+    s = consulta.strip()
+    while s.endswith("."):
+        s = s[:-1].rstrip()
+    return s
+
+
+def _patron_predicado_bloqueado(consulta: str) -> str | None:
+    """Devuelve el primer predicado bloqueado encontrado, o None."""
+    m = _REGEX_PREDICADO_BLOQUEADO.search(consulta)
+    return m.group(1) if m else None
+
+
+def _resumen_error_sandbox(mensaje_pyswip: str) -> str:
+    """Extrae la causa principal de un PrologError de safe_goal/1.
+
+    pyswip envuelve el error de Prolog en un wrapper verboso. Para la
+    UI nos quedamos con la primera mención de permission_error o
+    instantiation_error si está; si no, devolvemos el mensaje crudo.
+    """
+    for clave in (
+        "permission_error",
+        "instantiation_error",
+        "type_error",
+        "existence_error",
+        "domain_error",
+    ):
+        idx = mensaje_pyswip.find(clave)
+        if idx != -1:
+            fin = mensaje_pyswip.find(")", idx)
+            if fin != -1:
+                return mensaje_pyswip[idx:fin + 1]
+            return mensaje_pyswip[idx:idx + 200]
+    return mensaje_pyswip[:300]
+
+
+def _normalizar_solucion(solucion: dict) -> dict[str, Any]:
+    """Convierte un binding pyswip a {var: representación_legible}."""
+    return {var: _valor_prolog_a_str(val) for var, val in solucion.items()}
+
+
+def _valor_prolog_a_str(valor: Any) -> str:
+    """Estiliza un valor Prolog al formato que muestra SWI-Prolog clásico.
+
+    - Listas: "[a, b, c]" en una sola línea (no pretty-print).
+    - Átomos: "soja".
+    - Números: "6.5" / "750".
+    - Otros: str(valor) con normalización de Atom('x') → x.
+    """
+    if isinstance(valor, list):
+        return "[" + ", ".join(_valor_prolog_a_str(x) for x in valor) + "]"
+    if isinstance(valor, bytes):
+        return valor.decode("utf-8")
+    if isinstance(valor, (int, float)):
+        return str(valor)
+    s = str(valor)
+    if s.startswith("Atom(") and s.endswith(")"):
+        s = s[5:-1].strip("'\"")
+    return s
+
+
+def _formatear_salida_prolog(
+    soluciones: list[dict[str, Any]], truncado: bool
+) -> str:
+    """Devuelve la salida estilo terminal SWI-Prolog clásico.
+
+    Reglas:
+      - 0 soluciones                 → "false."
+      - 1 solución sin variables     → "true."
+      - 1 solución con variables     → "X = a, Y = b."
+      - >1 soluciones                → "X = a ; X = b ; X = c."
+      - truncado tras max_soluciones → "X = a ; ... (más soluciones)."
+    """
+    if not soluciones:
+        return "false."
+
+    def fmt_binding(sol: dict[str, Any]) -> str:
+        return ", ".join(f"{var} = {val}" for var, val in sol.items())
+
+    if len(soluciones) == 1 and not truncado:
+        sol = soluciones[0]
+        if not sol:
+            return "true."
+        return f"{fmt_binding(sol)}."
+
+    partes = []
+    for sol in soluciones:
+        partes.append(fmt_binding(sol) if sol else "true")
+    salida = " ;\n".join(partes)
+    if truncado:
+        salida += " ;\n... (más soluciones — corté en "
+        salida += f"{len(soluciones)})."
+    else:
+        salida += "."
+    return salida
+
 
 def _normalizar_lista_atomos(prolog_list: Any) -> list[str]:
     """Convierte una lista de átomos pyswip a strings Python."""
@@ -431,6 +685,36 @@ class SistemaAgroSmart:
         if self.backend.es_apto_parcial_suelo(lote_id, cultivo):
             return CultivoAptoParcial(cultivo=cultivo, motivo="apto_parcial_suelo")
         return CultivoAptoParcial(cultivo=cultivo, motivo="apto_parcial_clima")
+
+    # ------------------------------------------------------------------
+    # Consola Prolog (tab "🔍 Consola Prolog" de la app)
+    # ------------------------------------------------------------------
+    def consultar_prolog(
+        self,
+        consulta_str: str,
+        sandboxing: bool = True,
+        timeout: float = 5.0,
+        max_soluciones: int = 5,
+    ) -> dict:
+        """Ejecuta una consulta Prolog arbitraria y devuelve metadatos.
+
+        Pensado para la consola del tab "🔍 Consola Prolog": expone el
+        sistema simbólico de manera transparente sin tocar la cascada
+        de ``evaluar_lote``. Las consultas predefinidas pasan
+        ``sandboxing=False`` (ya están auditadas); la consola libre
+        siempre las pasa con ``sandboxing=True``.
+
+        Returns:
+            Diccionario con claves: ``consulta``, ``exitosa``,
+            ``soluciones``, ``output_formateado``, ``error``,
+            ``tiempo_ms``, ``truncado``.
+        """
+        return self.backend.consulta_cruda(
+            consulta=consulta_str,
+            sandboxing=sandboxing,
+            timeout=timeout,
+            max_soluciones=max_soluciones,
+        )
 
     # ------------------------------------------------------------------
     # Serialización
