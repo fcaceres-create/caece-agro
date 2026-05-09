@@ -173,8 +173,40 @@ def _render_seccion_proyecto() -> None:
 # ---------------------------------------------------------------------
 # Sección 2 — 🔬 Arquitectura técnica
 # ---------------------------------------------------------------------
+# El SVG del diagrama vive en app/assets/arquitectura.svg y se renderiza
+# con st.image. Streamlit sanitiza el HTML que va por st.markdown(
+# unsafe_allow_html=True) y descarta los <svg> inline; st.image en
+# cambio sirve el archivo tal cual al browser, que sí lo respeta.
+#
+# El SVG incluye su propio <rect fill="#FFFFFF"/> de fondo a página
+# completa para mantenerse legible sobre el tema dark de la app sin
+# depender de un wrapper externo.
+ARQUITECTURA_SVG = (
+    Path(__file__).resolve().parents[2] / "app" / "assets" / "arquitectura.svg"
+)
+
+
+def _render_diagrama_arquitectura() -> None:
+    """Renderiza el SVG de arquitectura desde app/assets/."""
+    if not ARQUITECTURA_SVG.exists():
+        st.warning(
+            "Diagrama de arquitectura no disponible "
+            "(falta `app/assets/arquitectura.svg`)."
+        )
+        return
+    st.image(str(ARQUITECTURA_SVG), width="stretch")
+
+
 def _render_seccion_arquitectura() -> None:
     with st.expander("🔬 Arquitectura técnica", expanded=False):
+        st.markdown("### Diagrama de arquitectura")
+        st.markdown(
+            "Vista de las 4 capas del sistema desde el punto de vista "
+            "tecnológico: fuentes de datos, procesamiento offline, "
+            "almacenamiento y runtime."
+        )
+        _render_diagrama_arquitectura()
+
         st.markdown(
             "### Stack tecnológico\n"
             "\n"

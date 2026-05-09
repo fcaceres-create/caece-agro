@@ -1,0 +1,126 @@
+<svg width="100%" viewBox="0 0 680 720" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Arquitectura tecnologica de AgroSmart</title>
+<desc>Diagrama de 4 capas: origen de datos, procesamiento, almacenamiento y runtime, con flechas de flujo entre ellas.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+
+<!-- BACKGROUND BLANCO AUTOCONTENIDO (para que se lea sobre tema dark) -->
+<rect x="0" y="0" width="680" height="720" fill="#FFFFFF"/>
+
+<!-- TÍTULOS DE CAPAS -->
+<text x="40" y="32" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">1. Origen de datos</text>
+<text x="40" y="50" font-family="sans-serif" font-size="12" fill="#5F5E5A">Fuentes externas oficiales</text>
+
+<!-- CAPA 1: ORIGEN (amber) -->
+<rect x="40" y="64" width="148" height="56" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+<text x="114" y="84" font-family="sans-serif" font-size="14" font-weight="500" fill="#854F0B" text-anchor="middle">MAGyP</text>
+<text x="114" y="104" font-family="sans-serif" font-size="12" fill="#BA7517" text-anchor="middle">Rendimientos CSV</text>
+
+<rect x="200" y="64" width="148" height="56" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+<text x="274" y="84" font-family="sans-serif" font-size="14" font-weight="500" fill="#854F0B" text-anchor="middle">Open-Meteo</text>
+<text x="274" y="104" font-family="sans-serif" font-size="12" fill="#BA7517" text-anchor="middle">API REST · ERA5</text>
+
+<rect x="360" y="64" width="148" height="56" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+<text x="434" y="84" font-family="sans-serif" font-size="14" font-weight="500" fill="#854F0B" text-anchor="middle">SoilGrids</text>
+<text x="434" y="104" font-family="sans-serif" font-size="12" fill="#BA7517" text-anchor="middle">API REST · ISRIC</text>
+
+<rect x="520" y="64" width="120" height="56" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+<text x="580" y="84" font-family="sans-serif" font-size="14" font-weight="500" fill="#854F0B" text-anchor="middle">Catedra</text>
+<text x="580" y="104" font-family="sans-serif" font-size="12" fill="#BA7517" text-anchor="middle">INTA, FAO</text>
+
+<!-- FLECHAS CAPA 1 → 2 -->
+<line x1="114" y1="120" x2="114" y2="160" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="274" y1="120" x2="274" y2="160" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="434" y1="120" x2="434" y2="160" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="580" y1="120" x2="580" y2="160" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- TÍTULO CAPA 2 -->
+<text x="40" y="180" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">2. Procesamiento (offline)</text>
+<text x="40" y="198" font-family="sans-serif" font-size="12" fill="#5F5E5A">Pipeline reproducible en Python</text>
+
+<!-- CAPA 2: PROCESAMIENTO (purple) -->
+<rect x="40" y="212" width="195" height="64" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text x="137" y="232" font-family="sans-serif" font-size="14" font-weight="500" fill="#3C3489" text-anchor="middle">Consolidacion ETL</text>
+<text x="137" y="250" font-family="sans-serif" font-size="12" fill="#534AB7" text-anchor="middle">pandas · requests</text>
+<text x="137" y="266" font-family="sans-serif" font-size="12" fill="#534AB7" text-anchor="middle">3.786 registros</text>
+
+<rect x="247" y="212" width="195" height="64" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text x="344" y="232" font-family="sans-serif" font-size="14" font-weight="500" fill="#3C3489" text-anchor="middle">EDA y rangos</text>
+<text x="344" y="250" font-family="sans-serif" font-size="12" fill="#534AB7" text-anchor="middle">Jupyter · matplotlib</text>
+<text x="344" y="266" font-family="sans-serif" font-size="12" fill="#534AB7" text-anchor="middle">Percentiles P10/P90</text>
+
+<rect x="454" y="212" width="186" height="64" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text x="547" y="232" font-family="sans-serif" font-size="14" font-weight="500" fill="#3C3489" text-anchor="middle">Entrenamiento</text>
+<text x="547" y="250" font-family="sans-serif" font-size="12" fill="#534AB7" text-anchor="middle">scikit-learn RF</text>
+<text x="547" y="266" font-family="sans-serif" font-size="12" fill="#534AB7" text-anchor="middle">11 modelos joblib</text>
+
+<!-- FLECHAS CAPA 2 → 3 -->
+<line x1="137" y1="276" x2="137" y2="316" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="344" y1="276" x2="344" y2="316" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="547" y1="276" x2="547" y2="316" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- TÍTULO CAPA 3 -->
+<text x="40" y="336" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">3. Almacenamiento</text>
+<text x="40" y="354" font-family="sans-serif" font-size="12" fill="#5F5E5A">Versionado en GitHub · sin base de datos</text>
+
+<!-- CAPA 3: ALMACENAMIENTO (gray) -->
+<rect x="40" y="368" width="195" height="64" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text x="137" y="388" font-family="sans-serif" font-size="14" font-weight="500" fill="#444441" text-anchor="middle">Dataset maestro</text>
+<text x="137" y="406" font-family="sans-serif" font-size="12" fill="#5F5E5A" text-anchor="middle">dataset_maestro.csv</text>
+<text x="137" y="422" font-family="sans-serif" font-size="12" fill="#5F5E5A" text-anchor="middle">1,06 MB</text>
+
+<rect x="247" y="368" width="195" height="64" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text x="344" y="388" font-family="sans-serif" font-size="14" font-weight="500" fill="#444441" text-anchor="middle">Hechos Prolog</text>
+<text x="344" y="406" font-family="sans-serif" font-size="12" fill="#5F5E5A" text-anchor="middle">hechos_generados.pl</text>
+<text x="344" y="422" font-family="sans-serif" font-size="12" fill="#5F5E5A" text-anchor="middle">265 hechos</text>
+
+<rect x="454" y="368" width="186" height="64" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text x="547" y="388" font-family="sans-serif" font-size="14" font-weight="500" fill="#444441" text-anchor="middle">Modelos serializados</text>
+<text x="547" y="406" font-family="sans-serif" font-size="12" fill="#5F5E5A" text-anchor="middle">data/modelos/*.joblib</text>
+<text x="547" y="422" font-family="sans-serif" font-size="12" fill="#5F5E5A" text-anchor="middle">11 archivos · 14,5 MB</text>
+
+<!-- FLECHAS CAPA 3 → 4 -->
+<line x1="137" y1="432" x2="137" y2="490" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="344" y1="432" x2="344" y2="490" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="547" y1="432" x2="547" y2="490" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- TÍTULO CAPA 4 -->
+<text x="40" y="476" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">4. Runtime (Streamlit Cloud · Linux)</text>
+<text x="40" y="494" font-family="sans-serif" font-size="12" fill="#5F5E5A">Lo que pasa cuando un usuario evalua un lote</text>
+
+<!-- CAPA 4: CONTENEDOR EXTERNO (teal) -->
+<rect x="40" y="510" width="600" height="170" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text x="340" y="534" font-family="sans-serif" font-size="14" font-weight="500" fill="#085041" text-anchor="middle">Contenedor Streamlit Cloud · Python 3.11.15</text>
+
+<!-- CAJAS AZULES INTERNAS DEL RUNTIME -->
+<rect x="60" y="552" width="180" height="110" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="150" y="572" font-family="sans-serif" font-size="14" font-weight="500" fill="#0C447C" text-anchor="middle">Frontend</text>
+<text x="150" y="592" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">Streamlit · folium</text>
+<text x="150" y="610" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">plotly · 3 tabs</text>
+<text x="150" y="628" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">Mapa interactivo</text>
+<text x="150" y="646" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">Consola Prolog</text>
+
+<rect x="252" y="552" width="180" height="110" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="342" y="572" font-family="sans-serif" font-size="14" font-weight="500" fill="#0C447C" text-anchor="middle">Bridge en cascada</text>
+<text x="342" y="592" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">integrador.py</text>
+<text x="342" y="610" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">Aptitud → RF → Riesgo</text>
+<text x="342" y="628" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">pyswip 0.3.2</text>
+<text x="342" y="646" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">Sandbox + timeout</text>
+
+<rect x="444" y="552" width="180" height="110" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="534" y="572" font-family="sans-serif" font-size="14" font-weight="500" fill="#0C447C" text-anchor="middle">Capa simbolica</text>
+<text x="534" y="592" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">SWI-Prolog 9.2.9</text>
+<text x="534" y="610" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">5 archivos .pl</text>
+<text x="534" y="628" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">Inferencia logica</text>
+<text x="534" y="646" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">apt vía packages.txt</text>
+
+<!-- FLECHAS HORIZONTALES ENTRE CAJAS DEL RUNTIME -->
+<line x1="240" y1="607" x2="252" y2="607" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="432" y1="607" x2="444" y2="607" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- URL AL PIE -->
+<text x="340" y="704" font-family="sans-serif" font-size="12" fill="#5F5E5A" text-anchor="middle">Browser del usuario · https://caece-agrosmart.streamlit.app</text>
+</svg>
