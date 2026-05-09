@@ -49,3 +49,4 @@ dist/
 *.egg-info/
 
 data/processed/
+data/modelos/
