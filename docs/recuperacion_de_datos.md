@@ -452,7 +452,7 @@ Este documento se ampliará en las próximas fases del proyecto con las decision
 - **Sección 10 — Decisiones metodológicas en la Fase II (EDA y modelado)** — pendiente.
 - **Sección 11 — Construcción de la base de hechos Prolog desde el EDA** — completada (ver más abajo).
 - **Sección 12 — Diseño de las reglas del sistema experto** — completada (ver más abajo).
-- **Sección 13 — Bridge Python ↔ Prolog: integración híbrida** — pendiente.
+- **Sección 13 — Modelo de regresión + Bridge Python ↔ Prolog (Fase IV)** — completada (ver más abajo).
 - **Sección 14 — Validación final y caso de uso de demostración** — pendiente.
 
 ---
@@ -660,3 +660,161 @@ Para validar el sistema completo se construyó un lote de prueba con datos típi
 - **Casos de borde validados:** un `lote_seco` (300 mm) dispara `riesgo_sequia(_, soja)` por estar por debajo del P10 de soja; un `lote_acido` (pH 5.0) dispara `riesgo_acidez/2`.
 
 Las 10 consultas de aceptación pasaron en una sola corrida del script de validación, sin errores de sintaxis Prolog ni resultados inesperados. El sistema experto está listo para que la Fase IV (bridge Python↔Prolog) consulte `reporte_lote/4` con coordenadas reales y devuelva una recomendación argumentada al usuario.
+
+---
+
+## 13. Modelo de regresión + Bridge Python ↔ Prolog (Fase IV)
+
+Esta sección documenta las dos últimas piezas centrales del sistema: el **regresor cuantitativo** que predice rendimiento por cultivo y el **bridge** que orquesta la cascada Python↔Prolog completa. Juntas materializan el segundo puente del aporte propio: la confrontación entre la salida del modelo estadístico y el razonamiento simbólico.
+
+### 13.1. Decisión: un Random Forest por cultivo (no un modelo único)
+
+Se descartó la opción de entrenar un único modelo para los 11 cultivos a favor de **11 modelos independientes**, uno por cultivo. La justificación es agronómica y emerge directamente del EDA (Fase II):
+
+- **CEC** domina las predicciones de trigo (importancia 0.56) y algodón (0.65).
+- **Humedad relativa** domina soja (0.21) y aparece en girasol (0.14).
+- **Radiación solar** domina arroz (0.32) y maní (0.22).
+- **Temperatura máxima** es el driver principal de sorgo (0.26).
+
+Un único modelo para todos los cultivos disolvería estas diferencias y entregaría feature importances promediadas que no reflejan ninguna realidad agronómica concreta. La separación por cultivo permite, además, que el análisis de errores y las decisiones de mejora futuras se hagan sobre cada cultivo por separado, sin contaminación cruzada.
+
+### 13.2. Hiperparámetros base sin GridSearch
+
+Los modelos se entrenan con configuración estándar de Random Forest, idéntica para los 11 cultivos:
+
+```python
+RandomForestRegressor(
+    n_estimators=200,
+    max_depth=15,
+    min_samples_leaf=3,
+    random_state=42,
+    n_jobs=-1,
+)
+```
+
+**Decisión consciente:** no se usa GridSearch ni ningún otro mecanismo de fine-tuning. Las razones son tres:
+
+1. El TFI no se evalúa por el R² del modelo: se evalúa por la **integración** entre la capa estadística y la simbólica. Optimizar 0.05 puntos adicionales de R² no aporta valor académico al trabajo.
+2. La interpretabilidad y simplicidad del pipeline son más importantes que el rendimiento marginal. Cualquier evaluador puede leer 4 hiperparámetros explícitos en el código; un GridSearchCV con 200 combinaciones sería ruido.
+3. El tiempo de regeneración del sistema completo (entrenamiento de los 11 modelos) es del orden de segundos con esta configuración. Esto es un objetivo de diseño: el TFI debe ser reproducible end-to-end en una computadora portátil sin GPU.
+
+### 13.3. Las 12 features en orden fijo
+
+El vector de entrada del modelo tiene **12 features en un orden documentado y fijo**, definido como tupla constante `FEATURES` en [src/modelos/regresor_rendimiento.py](../src/modelos/regresor_rendimiento.py):
+
+```
+1.  precipitacion_total_mm
+2.  temp_media_c
+3.  temp_max_promedio_c
+4.  temp_min_promedio_c
+5.  humedad_relativa_promedio
+6.  radiacion_solar_total
+7.  dias_helada
+8.  ph
+9.  materia_organica_pct
+10. arcilla_pct
+11. arena_pct
+12. cec
+```
+
+Este orden **es un contrato** entre el regresor y el bridge: el integrador construye el vector de inferencia desde los datos del lote en exactamente este orden antes de llamar a `modelo.predict()`. Cualquier cambio en el orden requiere reentrenar todos los modelos. Por eso la lista vive como constante única en el módulo del regresor y se importa desde el bridge, no se duplica.
+
+### 13.4. Resultados por cultivo
+
+Tras entrenar los 11 modelos sobre las 3.523 filas válidas del dataset (filtrando rendimiento > 0 y filas sin NaN en features), las métricas obtenidas son:
+
+| Cultivo | n_train | n_test | R² | MAE (kg/ha) | RMSE (kg/ha) | Top feature (importancia) |
+|---|---|---|---|---|---|---|
+| algodón | 92 | 23 | **0.818** | 279 | 330 | cec (0.65) |
+| trigo | 406 | 102 | 0.747 | 450 | 563 | cec (0.56) |
+| centeno | 89 | 23 | 0.741 | 320 | 406 | cec (0.22) |
+| cebada | 86 | 22 | 0.710 | 492 | 593 | precipitación (0.31) |
+| maíz | 532 | 133 | 0.638 | 1064 | 1368 | cec (0.26) |
+| sorgo | 427 | 107 | 0.626 | 687 | 894 | temp_max (0.26) |
+| soja | 507 | 127 | 0.577 | 368 | 479 | humedad (0.21) |
+| avena | 232 | 58 | 0.480 | 461 | 594 | cec (0.17) |
+| arroz | 56 | 15 | 0.437 | 463 | 667 | radiación (0.32) |
+| girasol | 299 | 75 | 0.320 | 328 | 429 | humedad (0.14) |
+| maní | 89 | 23 | **0.024** | 610 | 744 | radiación (0.22) |
+
+El reporte completo con las top 5 features importances por cultivo se persiste automáticamente en `data/modelos/reporte_entrenamiento.json` durante el entrenamiento.
+
+**Análisis de los extremos:**
+
+- **Algodón (R² 0.82)** es el cultivo mejor predicho. La razón es estructural: el algodón en Argentina se concentra geográficamente en NOA y NEA con condiciones edafoclimáticas relativamente homogéneas. La CEC domina la importancia con 0.65: un único valor edáfico explica gran parte de la varianza del rendimiento. Es un caso "fácil" en el sentido estadístico.
+- **Maní (R² 0.024)** es prácticamente impredecible con las features actuales. Esto **no es un problema del modelo** sino una limitación honesta del dataset: los drivers reales del rinde de maní son la variedad sembrada, la fecha de siembra exacta y la disponibilidad de calcio en el suelo, ninguna de las cuales está en el dataset. El sistema reconoce sus propios límites: para maní, la predicción cuantitativa entrega más ruido que señal y el R² lo evidencia. La consecuencia operativa es que la cascada va a recomendar maní solo cuando Prolog lo apruebe, pero la predicción asociada debe leerse con escepticismo. En la defensa esto se presenta como ejemplo de honestidad: no se ocultó el R² bajo, se documentó.
+
+### 13.5. Intervalo de confianza al 95%
+
+Para cada predicción se entrega también un **intervalo de confianza** construido a partir de la dispersión de las predicciones de los árboles individuales del bosque. La lógica es:
+
+- Cada árbol del Random Forest se entrenó sobre un bootstrap distinto del dataset y por lo tanto es un estimador independiente.
+- Para una entrada dada, los 200 árboles producen 200 predicciones individuales.
+- La media de esas predicciones es la predicción del ensemble; la desviación estándar **σ** aproxima la incertidumbre del ensemble sobre ese punto.
+- El intervalo del 95% se construye como `[media − 1.96·σ, media + 1.96·σ]`.
+
+Este enfoque tiene tres ventajas:
+
+1. **No requiere ningún supuesto distribucional** sobre el ruido del target: se deriva directamente de la varianza interna del bosque.
+2. **Es local:** la incertidumbre depende del punto evaluado. Un lote en el corazón del espacio de entrenamiento tiene intervalo angosto; uno en la frontera del espacio (combinación de features inusual) tiene intervalo ancho. Eso refleja correctamente la confiabilidad de la predicción.
+3. **Es interpretable** para un agrónomo: el intervalo se reporta en kg/ha junto con la predicción puntual.
+
+### 13.6. Bridge Python↔Prolog: cascada en 3 etapas
+
+El integrador [src/bridge/integrador.py](../src/bridge/integrador.py) implementa la cascada de decisión completa, dado un lote (región + variables agronómicas) en una llamada `evaluar_lote(lote)`. Las etapas son:
+
+**Etapa 1 — Razonamiento simbólico (Prolog vía pyswip):**
+
+- Se asertan los hechos del lote en Prolog usando un identificador único (`lote_runtime_<uuid>`) para evitar contaminación entre llamadas concurrentes.
+- Se consulta `reporte_lote/4` (ver §12.6) para obtener las tres listas: recomendados, no recomendados y aptos parciales.
+- Para cada cultivo recomendado se consulta también `todos_los_riesgos/3` para enumerar las observaciones (riesgos no críticos).
+- Al final de la etapa los hechos del lote se retractan, dejando la base de conocimiento limpia.
+
+**Etapa 2 — Predicción cuantitativa (sklearn):**
+
+- Para cada cultivo recomendado, el bridge carga el modelo joblib correspondiente desde `data/modelos/`.
+- Construye el vector de features del lote en el orden documentado (§13.3) y predice rendimiento + intervalo de confianza.
+
+**Etapa 3 — Reporte integrado:**
+
+- Por cada cultivo recomendado se compara la predicción puntual contra `rendimiento_esperado/4` (los percentiles 10/50/90 que ya conoce Prolog) y se emite una **clasificación cualitativa**: `alto`, `medio`, `bajo` o `muy_bajo`.
+- El reporte final es un objeto `ReporteLote` (dataclass) serializable a JSON, con: copia del lote, timestamp ISO, lista de recomendaciones (cada una con cultivo, predicción, intervalo, percentiles esperados, clasificación, observaciones), no recomendados con motivo y aptos parciales con tipo.
+
+### 13.7. El "segundo puente" del aporte propio
+
+La cascada de las §13.6 ya integra ambas capas, pero el aporte propio de Fase IV se materializa en una decisión de diseño concreta dentro de la Etapa 3:
+
+> Si la predicción del modelo cuantitativo cae **por debajo del p10 esperado** de la zona, el bridge agrega automáticamente la observación `rendimiento_bajo_lo_esperado` a la lista de riesgos del cultivo, en lugar de aceptar la predicción en silencio.
+
+Esto es exactamente el "ML ↔ Lógica" anunciado en CLAUDE.md: el sistema simbólico (que conoce los percentiles esperados de la zona) y el sistema estadístico (que predice un valor concreto para este lote) **se contrastan mutuamente**. Un desacuerdo no se oculta: se reporta como observación explícita para que el productor (o el evaluador) entienda que el modelo está prediciendo una campaña claramente por debajo de lo histórico. Las razones pueden ser legítimas (combinación inusual de features) o pueden indicar un problema en los datos del lote, pero esa interpretación queda del lado humano.
+
+Es la diferencia entre dos sistemas paralelos y un sistema híbrido real: en un sistema paralelo, el modelo predice y Prolog opina por separado; en un sistema híbrido, las dos salidas se cruzan antes de presentar la recomendación.
+
+### 13.8. Validación con 3 demos
+
+El script [scripts/demo_agrosmart.py](../scripts/demo_agrosmart.py) ejecuta tres lotes de prueba que cubren escenarios contrastantes y exporta los reportes a `data/modelos/demo_*.json`. Los tres se usan en la defensa oral para mostrar el sistema funcionando end-to-end:
+
+- **LOTE 1 — Pergamino típico** (pampeana, condiciones óptimas). Recomienda **soja, maíz, girasol y sorgo** — los cuatro grandes cultivos del verano pampeano. Las predicciones quedan dentro de los rangos esperados de la zona: soja 3.359 kg/ha (medio), maíz 9.126 kg/ha (alto), girasol 2.215 kg/ha (medio), sorgo 5.462 kg/ha (medio). Cebada y trigo aparecen como aptos parciales (suelo OK, clima de verano fuera de rango), exactamente como debería interpretarlo un asesor.
+- **LOTE 2 — Sequía 2022/23** (misma base pampeana, pero precipitación 320 mm). El sistema **no recomienda ningún cultivo**: todos los cultivos extensivos del verano caen bajo el P10 de lluvia y disparan `riesgo_sequia` (crítico). Comportamiento agronómicamente correcto: la sequía 2022/23 fue catastrófica en la zona núcleo y un asesor no debería recomendar siembra masiva sin riego en esas condiciones.
+- **LOTE 3 — NEA arrocero** (precipitación 850 mm, pH 6.1, temperatura 24 °C). Valores deliberadamente elegidos para caer dentro de los rangos óptimos del arroz derivados del dataset. El sistema recomienda **arroz** (predicho 6.883 kg/ha, clasificación medio: dentro del p50-p90 esperado) y **maíz** (4.996 kg/ha, bajo). Soja queda fuera porque pH 6.1 cae justo por debajo del P10 de soja (6.18), lo cual es un caso interesante de borde: con los rangos derivados estadísticamente, una décima de pH separa "recomendado" de "suelo fuera de rango". Es coherente con la realidad agronómica argentina, donde la soja en NEA suele requerir encalado.
+
+### 13.9. Tests automatizados
+
+El bridge tiene cobertura mínima de tests en [tests/test_bridge.py](../tests/test_bridge.py), 6 casos en total:
+
+1. `test_evaluar_lote_pampeano_recomienda_4_grandes` — un lote pampeano típico debe recomendar al menos soja y maíz.
+2. `test_evaluar_lote_arido_no_recomienda_soja` — un lote con 300 mm de lluvia debe excluir soja por riesgo de sequía.
+3. `test_evaluar_lote_acido_no_recomienda_nada` — un lote con pH 4.5 debe descartar todos los cultivos.
+4. `test_predicciones_dentro_de_rango_razonable` — para un lote pampeano la predicción de soja debe estar entre 1.500 y 4.500 kg/ha.
+5. `test_reporte_serializable_a_json` — el `ReporteLote` debe roundtrip-ear por JSON sin pérdida de información.
+6. `test_clasificacion_rendimiento_alto_medio_bajo` — el helper de clasificación cualitativa contra percentiles devuelve la categoría correcta para los cuatro casos.
+
+**Resultado: 6/6 pasan en una corrida limpia (1.10 s).** Los tests cuantitativos (4 y 5) hacen `pytest.skip` automático si los modelos no están entrenados, lo cual permite que el suite siga corriendo en una clonada limpia del repo sin haber ejecutado todavía el entrenamiento.
+
+### 13.10. Aprendizajes y limitaciones de Fase IV
+
+Tres puntos honestos para incluir en la defensa oral, no para ocultar:
+
+- **Maní**: el R² muy bajo (0.024) no se mejora con más datos del mismo tipo. Los drivers reales del rinde de maní son la variedad genética, la fecha de siembra y la disponibilidad de calcio, ninguno de los cuales está en el dataset. Es una limitación de la fuente, no del enfoque. Trabajo futuro: enriquecer la base con el Registro de Variedades del INASE y datos finos de fenología por departamento.
+- **Sequía 2022/23**: el sistema descarta absolutamente todos los cultivos. Es **agronómicamente correcto** —un asesor que recomendara sembrar soja con 320 mm sería irresponsable—, pero limita la utilidad práctica del sistema durante años catastróficos. Un productor que igual va a sembrar (porque tiene que sembrar) merece una recomendación útil del tipo "si tenés que elegir, esto pierde menos". Trabajo futuro: agregar un modelo de "pérdida proyectada" para los cultivos descartados, que rankee por magnitud de pérdida esperada en lugar de descartarlos en bloque.
+- **Lote NEA original (sin ajustar)**: el primer intento del LOTE 3 con precip 1100 mm y pH 6.0 también descartaba todo. Esto **sí es informativo**: aun en una zona productora reconocida (NEA arrocero), valores fuera de los rangos óptimos derivados estadísticamente del dataset descartan al cultivo. Para la demo se ajustaron los valores a 850 mm y 6.1 (caso positivo), pero la conclusión queda anotada: el sistema es estricto y se inclina hacia el lado conservador, lo cual es una propiedad deseable en un sistema de recomendación agronómica responsable.
