@@ -175,7 +175,7 @@ def render_detalle_cultivo(
 
         st.markdown("**Valor del lote vs rango óptimo del cultivo**")
         tabla = _construir_tabla_variables(sistema, seleccion, lote)
-        st.dataframe(tabla, hide_index=True, use_container_width=True)
+        st.dataframe(tabla, hide_index=True, width="stretch")
 
         # Si el cultivo está entre recomendados, hay predicción cuantitativa.
         rec = next((r for r in reporte.recomendaciones if r.cultivo == seleccion), None)
@@ -193,4 +193,4 @@ def render_detalle_cultivo(
                 f"dataset (ej: arroz solo se cultiva en NEA)."
             )
         else:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")

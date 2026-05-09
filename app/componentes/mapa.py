@@ -164,7 +164,7 @@ def render_mapa() -> None:
     estado = st_folium(
         mapa,
         height=460,
-        use_container_width=True,
+        width="stretch",
         returned_objects=["last_object_clicked"],
         key="mapa_principal",
     )

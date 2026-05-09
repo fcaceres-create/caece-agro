@@ -1,0 +1,33 @@
+# Dependencias de desarrollo local. NO se instalan en el deploy de
+# Streamlit Cloud (que usa solo requirements.txt).
+#
+# Incluye todo lo necesario para regenerar el dataset desde APIs,
+# correr el notebook de EDA, ejecutar tests, y regenerar el informe
+# académico en formato Word.
+#
+# Uso:
+#     pip install -r requirements-dev.txt
+
+# Trae primero todo lo de runtime (la app local sigue funcionando).
+-r requirements.txt
+
+# Cliente HTTP para consumir APIs externas (MAGyP, Open-Meteo, SoilGrids).
+# Solo se usa al regenerar el dataset, no en runtime de la app.
+requests>=2.31,<3.0
+
+# Visualización offline (notebook EDA y generación de las 13 figuras).
+# La app web usa plotly, no matplotlib.
+matplotlib>=3.7,<4.0
+seaborn>=0.12,<1.0
+
+# Notebooks (Jupyter para 02_eda_consolidado.ipynb).
+jupyter>=1.0,<2.0
+
+# Barra de progreso para loops largos (consolidación del dataset maestro).
+tqdm>=4.65,<5.0
+
+# Tests automatizados.
+pytest>=7.4,<9.0
+
+# Generación del informe TFI académico (.docx).
+python-docx>=1.1,<2.0

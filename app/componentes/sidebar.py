@@ -183,6 +183,6 @@ def render_sidebar() -> bool:
         st.divider()
 
         # --- Acción ------------------------------------------------------
-        evaluar = st.button("Evaluar lote", type="primary", use_container_width=True)
+        evaluar = st.button("Evaluar lote", type="primary", width="stretch")
 
     return evaluar

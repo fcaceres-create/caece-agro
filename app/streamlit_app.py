@@ -40,9 +40,18 @@ from app.componentes.reporte import render_reporte  # noqa: E402
 from app.componentes.sidebar import construir_lote_desde_estado, render_sidebar  # noqa: E402
 from src.bridge.integrador import SistemaAgroSmart  # noqa: E402
 
-# Logging discreto: streamlit ya hace bastante ruido, así que solo WARNINGs
-# del bridge llegan a consola.
-logging.basicConfig(level=logging.WARNING)
+# Logging a nivel INFO para que el log de arranque (cwd, raíz, plataforma)
+# quede visible en los logs de Streamlit Cloud y ayude a diagnosticar
+# problemas de path en el primer deploy.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s :: %(message)s",
+)
+_logger = logging.getLogger("agrosmart.app")
+_logger.info(
+    "Arranque de AgroSmart | cwd=%s | raiz_repo=%s | platform=%s",
+    Path.cwd(), RAIZ, sys.platform,
+)
 
 # ---------------------------------------------------------------------
 # Configuración de página

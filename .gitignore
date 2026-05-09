@@ -16,9 +16,12 @@ __pycache__/
 data/cache/
 data/raw/
 
-# Modelos serializados (regenerables)
+# Modelos serializados (regla global): regenerables.
+# EXCEPCIÓN: data/modelos/*.joblib SÍ se versiona porque el deploy en
+# Streamlit Cloud necesita los modelos entrenados al arrancar la app.
 *.pkl
 *.joblib
+!data/modelos/*.joblib
 
 # Variables de entorno y secretos
 .env
@@ -51,5 +54,29 @@ build/
 dist/
 *.egg-info/
 
-data/processed/
-data/modelos/
+# ---------------------------------------------------------------------
+# Artefactos del proyecto: política mixta para soportar deploy en
+# Streamlit Cloud (~16 MB total versionados).
+#
+# SE VERSIONAN (necesarios para que la app arranque sin tener que
+# regenerar todo el pipeline):
+#   - data/processed/dataset_maestro.csv
+#   - data/processed/rangos_optimos_por_cultivo.csv
+#   - data/modelos/*.joblib (los 11 modelos)
+#   - data/modelos/reporte_entrenamiento.json
+#   - src/prolog/hechos_generados.pl
+#
+# NO SE VERSIONAN (regenerables o intermedios del proceso):
+#   - data/processed/dataset_maestro_pampeana.csv  (backup de corrida)
+#   - data/processed/dataset_maestro_extra.csv     (backup de corrida)
+#   - data/modelos/demo_*.json                     (output del demo)
+#   - data/modelos/reporte_demo.json               (output del demo)
+# ---------------------------------------------------------------------
+
+# CSVs intermedios del proceso de consolidación diferencial.
+data/processed/dataset_maestro_pampeana.csv
+data/processed/dataset_maestro_extra.csv
+
+# Outputs del script demo_agrosmart.py.
+data/modelos/demo_*.json
+data/modelos/reporte_demo.json

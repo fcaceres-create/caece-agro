@@ -163,28 +163,62 @@ class _BackendProlog:
     """
 
     def __init__(self, archivo_pl: Path = PROLOG_FILE) -> None:
+        # 1) pyswip importable. En Linux/Streamlit Cloud se instala vía pip
+        #    en requirements.txt; en Windows local también, pero requiere
+        #    que SWI-Prolog esté en PATH y SWI_HOME_DIR esté seteado.
         try:
             from pyswip import Prolog  # type: ignore
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
-                "pyswip no está disponible. Instalar con `pip install pyswip` y "
-                "revisar SWI_HOME_DIR/PATH (ver CLAUDE.md, sección Setup)."
+                "pyswip no está disponible. Instalar con `pip install pyswip`. "
+                "En Windows, además, verificar SWI_HOME_DIR y PATH "
+                "(ver CLAUDE.md, sección Setup)."
             ) from exc
 
         if not archivo_pl.exists():
             raise FileNotFoundError(
                 f"No se encontró el sistema experto en {archivo_pl}. "
-                "Verificar src/prolog/agrosmart.pl."
+                "Verificar que src/prolog/ esté presente con todos los .pl, "
+                "incluido hechos_generados.pl (regenerable con "
+                "`python -m src.procesamiento.generar_hechos_prolog`)."
             )
 
-        self._Prolog = Prolog
-        self.prolog = Prolog()
-        # SWI-Prolog resuelve consult relativo a su cwd; pasamos el path
-        # con forward-slash para evitar problemas en Windows.
-        self.prolog.consult(str(archivo_pl).replace("\\", "/"))
-        # Declarar dynamics para no recibir errores "unknown procedure"
-        # cuando el lote aún no asertó hechos. Los predicados quedan así
-        # definidos como bases vacías hasta que el bridge los puebla.
+        # 2) Inicializar la VM de Prolog. Acá fallan los entornos donde
+        #    SWI-Prolog no está instalado a nivel sistema (Linux sin
+        #    swi-prolog-nox, Windows sin DLL en PATH). Mensaje específico
+        #    por OS para acelerar el diagnóstico en deploy.
+        try:
+            self._Prolog = Prolog
+            self.prolog = Prolog()
+        except Exception as exc:  # pragma: no cover
+            import sys
+            ayuda = (
+                "En Linux/Streamlit Cloud verificar que packages.txt incluya "
+                "`swi-prolog-nox` (Streamlit Cloud lo instala vía apt). "
+                if sys.platform.startswith("linux")
+                else "En Windows verificar que SWI_HOME_DIR apunte a la "
+                     "instalación de SWI-Prolog 9.x y que su carpeta `bin` "
+                     "esté en PATH (ver CLAUDE.md, sección Setup)."
+            )
+            raise RuntimeError(
+                f"No se pudo inicializar la VM de SWI-Prolog: {exc}. {ayuda}"
+            ) from exc
+
+        # 3) Consultar el archivo principal. SWI-Prolog resuelve el consult
+        #    relativo a su cwd; se pasa el path con forward-slash para
+        #    evitar problemas con backslashes en Windows (no-op en Linux).
+        try:
+            self.prolog.consult(str(archivo_pl).replace("\\", "/"))
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError(
+                f"Error consultando {archivo_pl}: {exc}. "
+                "Verificar que los 6 archivos .pl de src/prolog/ estén "
+                "presentes y sean sintácticamente válidos."
+            ) from exc
+
+        # 4) Declarar dynamics para no recibir errores "unknown procedure"
+        #    cuando el lote aún no asertó hechos. Los predicados quedan así
+        #    definidos como bases vacías hasta que el bridge los puebla.
         list(self.prolog.query("dynamic(region_lote/2)"))
         list(self.prolog.query("dynamic(valor_lote/3)"))
 

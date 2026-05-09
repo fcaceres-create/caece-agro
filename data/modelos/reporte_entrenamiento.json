@@ -1,0 +1,369 @@
+{
+  "fecha_entrenamiento": "2026-05-08T22:14:27",
+  "n_cultivos": 11,
+  "hiperparametros": {
+    "n_estimators": 200,
+    "max_depth": 15,
+    "min_samples_leaf": 3,
+    "random_state": 42,
+    "n_jobs": -1
+  },
+  "features_orden_fijo": [
+    "precipitacion_total_mm",
+    "temp_media_c",
+    "temp_max_promedio_c",
+    "temp_min_promedio_c",
+    "humedad_relativa_promedio",
+    "radiacion_solar_total",
+    "dias_helada",
+    "ph",
+    "materia_organica_pct",
+    "arcilla_pct",
+    "arena_pct",
+    "cec"
+  ],
+  "target": "rendimiento_kg_ha",
+  "cultivos": {
+    "soja": {
+      "cultivo": "soja",
+      "n_train": 507,
+      "n_test": 127,
+      "r2": 0.5772,
+      "mae_kg_ha": 368.4,
+      "rmse_kg_ha": 479.4,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.2077
+        },
+        {
+          "feature": "temp_max_promedio_c",
+          "importance": 0.1425
+        },
+        {
+          "feature": "precipitacion_total_mm",
+          "importance": 0.1191
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.0948
+        },
+        {
+          "feature": "radiacion_solar_total",
+          "importance": 0.082
+        }
+      ]
+    },
+    "maiz": {
+      "cultivo": "maiz",
+      "n_train": 532,
+      "n_test": 133,
+      "r2": 0.6383,
+      "mae_kg_ha": 1064.0,
+      "rmse_kg_ha": 1367.9,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "cec",
+          "importance": 0.2576
+        },
+        {
+          "feature": "temp_media_c",
+          "importance": 0.1793
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.1476
+        },
+        {
+          "feature": "temp_max_promedio_c",
+          "importance": 0.0852
+        },
+        {
+          "feature": "radiacion_solar_total",
+          "importance": 0.0767
+        }
+      ]
+    },
+    "trigo": {
+      "cultivo": "trigo",
+      "n_train": 406,
+      "n_test": 102,
+      "r2": 0.747,
+      "mae_kg_ha": 450.2,
+      "rmse_kg_ha": 562.6,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "cec",
+          "importance": 0.5629
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.1004
+        },
+        {
+          "feature": "precipitacion_total_mm",
+          "importance": 0.0895
+        },
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.0738
+        },
+        {
+          "feature": "temp_max_promedio_c",
+          "importance": 0.0615
+        }
+      ]
+    },
+    "girasol": {
+      "cultivo": "girasol",
+      "n_train": 299,
+      "n_test": 75,
+      "r2": 0.3203,
+      "mae_kg_ha": 328.1,
+      "rmse_kg_ha": 429.3,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.1361
+        },
+        {
+          "feature": "radiacion_solar_total",
+          "importance": 0.1352
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.1231
+        },
+        {
+          "feature": "precipitacion_total_mm",
+          "importance": 0.1163
+        },
+        {
+          "feature": "cec",
+          "importance": 0.1126
+        }
+      ]
+    },
+    "cebada": {
+      "cultivo": "cebada",
+      "n_train": 86,
+      "n_test": 22,
+      "r2": 0.7097,
+      "mae_kg_ha": 491.6,
+      "rmse_kg_ha": 592.5,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "precipitacion_total_mm",
+          "importance": 0.3097
+        },
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.2581
+        },
+        {
+          "feature": "materia_organica_pct",
+          "importance": 0.119
+        },
+        {
+          "feature": "temp_max_promedio_c",
+          "importance": 0.0709
+        },
+        {
+          "feature": "cec",
+          "importance": 0.0602
+        }
+      ]
+    },
+    "sorgo": {
+      "cultivo": "sorgo",
+      "n_train": 427,
+      "n_test": 107,
+      "r2": 0.6262,
+      "mae_kg_ha": 686.6,
+      "rmse_kg_ha": 894.4,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "temp_max_promedio_c",
+          "importance": 0.2627
+        },
+        {
+          "feature": "temp_media_c",
+          "importance": 0.1875
+        },
+        {
+          "feature": "cec",
+          "importance": 0.1178
+        },
+        {
+          "feature": "materia_organica_pct",
+          "importance": 0.0871
+        },
+        {
+          "feature": "arcilla_pct",
+          "importance": 0.0777
+        }
+      ]
+    },
+    "avena": {
+      "cultivo": "avena",
+      "n_train": 232,
+      "n_test": 58,
+      "r2": 0.4796,
+      "mae_kg_ha": 461.0,
+      "rmse_kg_ha": 593.7,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "cec",
+          "importance": 0.1657
+        },
+        {
+          "feature": "precipitacion_total_mm",
+          "importance": 0.1546
+        },
+        {
+          "feature": "arcilla_pct",
+          "importance": 0.1535
+        },
+        {
+          "feature": "materia_organica_pct",
+          "importance": 0.1312
+        },
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.129
+        }
+      ]
+    },
+    "centeno": {
+      "cultivo": "centeno",
+      "n_train": 89,
+      "n_test": 23,
+      "r2": 0.7409,
+      "mae_kg_ha": 320.3,
+      "rmse_kg_ha": 405.8,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "cec",
+          "importance": 0.2212
+        },
+        {
+          "feature": "materia_organica_pct",
+          "importance": 0.1419
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.1391
+        },
+        {
+          "feature": "precipitacion_total_mm",
+          "importance": 0.1219
+        },
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.0921
+        }
+      ]
+    },
+    "arroz": {
+      "cultivo": "arroz",
+      "n_train": 56,
+      "n_test": 15,
+      "r2": 0.4369,
+      "mae_kg_ha": 463.1,
+      "rmse_kg_ha": 666.9,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "radiacion_solar_total",
+          "importance": 0.3156
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.19
+        },
+        {
+          "feature": "arcilla_pct",
+          "importance": 0.1148
+        },
+        {
+          "feature": "arena_pct",
+          "importance": 0.0881
+        },
+        {
+          "feature": "temp_max_promedio_c",
+          "importance": 0.0768
+        }
+      ]
+    },
+    "algodon": {
+      "cultivo": "algodon",
+      "n_train": 92,
+      "n_test": 23,
+      "r2": 0.8183,
+      "mae_kg_ha": 279.0,
+      "rmse_kg_ha": 330.4,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "cec",
+          "importance": 0.6504
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.0625
+        },
+        {
+          "feature": "temp_media_c",
+          "importance": 0.0519
+        },
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.0441
+        },
+        {
+          "feature": "radiacion_solar_total",
+          "importance": 0.0429
+        }
+      ]
+    },
+    "mani": {
+      "cultivo": "mani",
+      "n_train": 89,
+      "n_test": 23,
+      "r2": 0.0244,
+      "mae_kg_ha": 609.9,
+      "rmse_kg_ha": 743.8,
+      "estratificado_por_region": true,
+      "top_5_features": [
+        {
+          "feature": "radiacion_solar_total",
+          "importance": 0.2231
+        },
+        {
+          "feature": "humedad_relativa_promedio",
+          "importance": 0.1513
+        },
+        {
+          "feature": "precipitacion_total_mm",
+          "importance": 0.1417
+        },
+        {
+          "feature": "temp_media_c",
+          "importance": 0.1191
+        },
+        {
+          "feature": "temp_min_promedio_c",
+          "importance": 0.1076
+        }
+      ]
+    }
+  }
+}

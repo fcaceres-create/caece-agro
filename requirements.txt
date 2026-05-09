@@ -1,38 +1,28 @@
-# Dependencias del proyecto AgroSmart
-# Versiones flexibles pero compatibles entre sí (Python 3.10+).
+# Dependencias de runtime de la app desplegada en Streamlit Cloud.
+# Lista mínima: lo estrictamente necesario para que arranque la app web
+# y la cascada de decisión Python <-> Prolog.
+#
+# Para desarrollo local (notebook, tests, regeneración del dataset,
+# generación del informe .docx) usar requirements-dev.txt en su lugar.
+#
+# Compatible con Python 3.10+ (recomendado 3.11).
 
 # Manipulación y análisis de datos
 pandas>=2.0,<3.0
 numpy>=1.24,<2.2
 
-# Cliente HTTP para consumir APIs externas
-requests>=2.31,<3.0
-
-# Modelado estadístico y ML
+# Modelado estadístico y ML (los joblib se cargan en runtime)
 scikit-learn>=1.3,<2.0
 joblib>=1.3,<2.0
 
-# Visualización
-matplotlib>=3.7,<4.0
-seaborn>=0.12,<1.0
-
-# Notebooks
-jupyter>=1.0,<2.0
-
-# Barra de progreso para loops largos (consolidación de dataset maestro)
-tqdm>=4.65,<5.0
-
 # Puente Python <-> SWI-Prolog
-pyswip>=0.2.10,<1.0
+# El sistema operativo necesita además SWI-Prolog instalado a nivel
+# binario: en Linux/Streamlit Cloud lo cubre packages.txt
+# (swi-prolog-nox); en Windows local hay que instalarlo a mano.
+pyswip>=0.3,<1.0
 
-# Tests
-pytest>=7.4,<9.0
-
-# App web (Fase IV — interfaz de defensa oral)
+# App web (Streamlit + mapa interactivo + gráficos)
 streamlit>=1.32,<2.0
 folium>=0.17,<1.0
 streamlit-folium>=0.20,<1.0
 plotly>=5.20,<7.0
-
-# Generación del informe TFI académico (.docx)
-python-docx>=1.1,<2.0
